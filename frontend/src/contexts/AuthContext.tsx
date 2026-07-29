@@ -11,6 +11,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { mockDb } from '@/services/mockDatabase';
 import { GameweekResult, simulateGameweek } from '@/services/gameweekService';
+import { ensureNewsSyncedAfterLogin } from '@/services/newsService';
 
 // Toggle this to switch between Firebase and Local Mock DB
 const USE_MOCK_DB = false;
@@ -160,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     email: authUser.email || '',
                     isAdmin: isAdminEmail(authUser.email || '')
                   });
+                  void ensureNewsSyncedAfterLogin(authUser.uid);
                   setIsLoading(false);
                 } else {
                   console.log('[AuthContext] User document not found. Attempting self-healing...');

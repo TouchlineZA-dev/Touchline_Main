@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     gnews_api_key: str = ""
     gnews_base_url: str = "https://gnews.io/api/v4"
     gnews_cache_ttl_minutes: int = 30
+    # Optional alternative news provider (NewsAPI.ai) to supplement GNews
+    newsapi_ai_api_key: str = ""
+    newsapi_ai_base_url: str = "https://eventregistry.org/api/v1"
 
 
 settings: Settings = Settings()

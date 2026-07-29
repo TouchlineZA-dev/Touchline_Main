@@ -5,5 +5,9 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .vs/
+.idea/
 repo-meta/
 frontend/node_modules/
+.pnpm-store/
+frontend/dist/
+touchline-sync-merged/

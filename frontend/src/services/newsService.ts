@@ -1,5 +1,5 @@
 import { db } from '@/integrations/firebase/client';
-import { collection, getDocs, setDoc, doc, deleteDoc, query, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, getDoc, getDocs, setDoc, doc, deleteDoc, query, orderBy, limit, Timestamp, runTransaction } from 'firebase/firestore';
 
 export interface NewsArticle {
     id: string;
@@ -33,6 +33,10 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\
 const CACHE_KEY_NEWS = 'cached_psl_news_v2';
 const CACHE_KEY_FIXTURES = 'cached_live_fixtures';
 const CACHE_DURATION = 1000 * 60 * 60 * 24; // 24 hours
+const NEWS_SYNC_INTERVAL_MS = 1000 * 60 * 60 * 12; // 12 hours
+const NEWS_CONTENT_STALE_MS = 1000 * 60 * 60 * 48; // 48 hours
+const NEWS_SYNC_LOCK_MS = 1000 * 60 * 2; // 2 minutes
+const NEWS_SYNC_STATE_DOC = doc(db, 'sync_state', 'news');
 
 const saveToCache = (key: string, data: any) => {
     try {
@@ -65,7 +69,6 @@ const getFromCache = (key: string): any | null => {
 
 export const fetchPSLNews = async (apiKey: string): Promise<NewsArticle[]> => {
     try {
-        // 1. Try to fetch from Firestore first
         const newsRef = collection(db, 'news');
         const q = query(newsRef, orderBy('publishedAt', 'desc'), limit(20));
         const querySnapshot = await getDocs(q);
@@ -75,47 +78,7 @@ export const fetchPSLNews = async (apiKey: string): Promise<NewsArticle[]> => {
             id: doc.id
         })) as NewsArticle[];
 
-        // 2. Decide if we need to sync with API
-        const latestArticle = cachedNews[0];
-        const lastSyncTime = latestArticle && (latestArticle as any).syncedAt
-            ? (latestArticle as any).syncedAt.toMillis()
-            : 0;
-
-        const latestArticleTime = latestArticle && latestArticle.publishedAt
-            ? latestArticle.publishedAt.toMillis()
-            : 0;
-
-        // Sync if:
-        // 1. No news (empty)
-        // 2. Last sync was > 12 hours ago (periodic update)
-        // 3. The latest news we have is > 48 hours old (content is stale, regardless of when we last checked)
-        const isSyncStale = Date.now() - lastSyncTime > (1000 * 60 * 60 * 12);
-        const isContentStale = Date.now() - latestArticleTime > (1000 * 60 * 60 * 48);
-
-        const shouldSync = isSyncStale || isContentStale;
-
-
-        if (shouldSync) {
-            try {
-                console.log(`Syncing news... (Empty: ${cachedNews.length === 0}, SyncStale: ${isSyncStale}, ContentStale: ${isContentStale})`);
-                await syncNewsWithAPI(apiKey);
-
-                // Re-fetch after sync
-                const freshSnapshot = await getDocs(q);
-                return freshSnapshot.docs.map(doc => ({
-                    ...doc.data(),
-                    id: doc.id
-                })) as NewsArticle[];
-            } catch (syncError) {
-                console.warn("News sync failed, falling back to cached/stale data:", syncError);
-                // Fallback to existing data if sync fails
-                if (cachedNews.length > 0) {
-                    return cachedNews;
-                }
-                throw syncError; // Only throw if we truly have nothing
-            }
-        }
-
+        saveToCache(CACHE_KEY_NEWS, cachedNews);
         return cachedNews;
     } catch (e) {
         console.warn("Firestore fetch/sync failed, checking local cache...", e);
@@ -124,6 +87,105 @@ export const fetchPSLNews = async (apiKey: string): Promise<NewsArticle[]> => {
 
         // If we have no cache and an error occurred, propagate it
         throw new Error(e instanceof Error ? e.message : "Failed to connect to news service");
+    }
+};
+
+const getLatestNewsState = async () => {
+    const newsRef = collection(db, 'news');
+    const q = query(newsRef, orderBy('publishedAt', 'desc'), limit(1));
+    const querySnapshot = await getDocs(q);
+    const latestArticle = querySnapshot.docs[0]?.data() as NewsArticle | undefined;
+    const latestArticleTime = latestArticle?.publishedAt && typeof latestArticle.publishedAt.toMillis === 'function'
+        ? latestArticle.publishedAt.toMillis()
+        : 0;
+    const lastArticleSyncTime = latestArticle && (latestArticle as any).syncedAt && typeof (latestArticle as any).syncedAt.toMillis === 'function'
+        ? (latestArticle as any).syncedAt.toMillis()
+        : 0;
+
+    return {
+        hasNews: !querySnapshot.empty,
+        latestArticleTime,
+        lastArticleSyncTime,
+    };
+};
+
+export const ensureNewsSyncedAfterLogin = async (userId: string): Promise<boolean> => {
+    try {
+        const newsState = await getLatestNewsState();
+        const syncStateSnapshot = await getDoc(NEWS_SYNC_STATE_DOC);
+        const syncState = syncStateSnapshot.exists() ? syncStateSnapshot.data() : {};
+        const lastCompletedAt = syncState.lastCompletedAt && typeof syncState.lastCompletedAt.toMillis === 'function'
+            ? syncState.lastCompletedAt.toMillis()
+            : 0;
+
+        const now = Date.now();
+        const isSyncStale = now - Math.max(lastCompletedAt, newsState.lastArticleSyncTime) > NEWS_SYNC_INTERVAL_MS;
+        const isContentStale = !newsState.hasNews || now - newsState.latestArticleTime > NEWS_CONTENT_STALE_MS;
+
+        if (!isSyncStale && !isContentStale) {
+            return false;
+        }
+
+        const lockAcquired = await runTransaction(db, async (transaction) => {
+            const stateSnapshot = await transaction.get(NEWS_SYNC_STATE_DOC);
+            const state = stateSnapshot.exists() ? stateSnapshot.data() : {};
+            const lockUntil = state.lockUntil && typeof state.lockUntil.toMillis === 'function'
+                ? state.lockUntil.toMillis()
+                : 0;
+            const completedAt = state.lastCompletedAt && typeof state.lastCompletedAt.toMillis === 'function'
+                ? state.lastCompletedAt.toMillis()
+                : 0;
+
+            if (lockUntil > now) {
+                return false;
+            }
+
+            if (newsState.hasNews && completedAt && now - completedAt <= NEWS_SYNC_INTERVAL_MS) {
+                return false;
+            }
+
+            transaction.set(NEWS_SYNC_STATE_DOC, {
+                status: 'running',
+                lockUntil: Timestamp.fromDate(new Date(now + NEWS_SYNC_LOCK_MS)),
+                lastAttemptAt: Timestamp.fromDate(new Date(now)),
+                triggeredBy: userId,
+            }, { merge: true });
+
+            return true;
+        });
+
+        if (!lockAcquired) {
+            return false;
+        }
+
+        const success = await syncNewsWithAPI('');
+        const completedAt = Timestamp.now();
+        await setDoc(NEWS_SYNC_STATE_DOC, {
+            status: success ? 'completed' : 'failed',
+            lastCompletedAt: success ? completedAt : syncState.lastCompletedAt || null,
+            lastFailedAt: success ? null : completedAt,
+            lockUntil: completedAt,
+            triggeredBy: userId,
+        }, { merge: true });
+
+        if (success && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('touchline:news-synced'));
+        }
+
+        return success;
+    } catch (e) {
+        console.warn('News login sync failed:', e);
+        try {
+            await setDoc(NEWS_SYNC_STATE_DOC, {
+                status: 'failed',
+                lastFailedAt: Timestamp.now(),
+                lockUntil: Timestamp.now(),
+                triggeredBy: userId,
+            }, { merge: true });
+        } catch {
+            // Ignore metadata write failures; the News page can still read cached data.
+        }
+        return false;
     }
 };
 
@@ -207,8 +269,6 @@ export const syncNewsWithAPI = async (apiKey?: string) => {
     console.log("Starting News Sync via merged backend API...");
 
     try {
-        await clearNewsCollection(); // Clear old news first
-
         const response = await fetch(`${API_BASE_URL}/news/headlines?max=10`);
 
         if (!response.ok) {
@@ -217,49 +277,53 @@ export const syncNewsWithAPI = async (apiKey?: string) => {
 
         const data = await response.json();
 
-        if (data.articles && Array.isArray(data.articles)) {
-            console.log(`Received ${data.articles.length} articles from backend`);
-
-            const syncTime = Timestamp.now();
-            let savedCount = 0;
-            const savedArticles: NewsArticle[] = [];
-
-            for (const item of data.articles) {
-                // Ensure ID is safe
-                const docId = btoa(item.url || item.title).slice(0, 20);
-                const summary = item.description || item.content || '';
-                const { tag, tagColor } = classifyArticle(item.title, summary);
-                const sourceName = typeof item.source === 'string'
-                    ? item.source
-                    : item.source?.name || 'GNews';
-
-                const newsData = {
-                    title: item.title,
-                    summary,
-                    date: formatRelativeTime(item.publishedAt),
-                    publishedAt: Timestamp.fromDate(new Date(item.publishedAt)),
-                    syncedAt: syncTime,
-                    source: sourceName,
-                    imageUrl: item.image || getFallbackImage(item.title),
-                    tag,
-                    tagColor,
-                    url: item.url
-                };
-
-                await setDoc(doc(db, 'news', docId), newsData, { merge: true });
-                savedArticles.push({
-                    id: docId,
-                    ...newsData
-                });
-                savedCount++;
-            }
-            console.log(`Successfully saved ${savedCount} articles to Firestore.`);
-            saveToCache(CACHE_KEY_NEWS, savedArticles);
-            return true;
+        if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
+            console.warn("Backend returned no articles. Skipping clear/write to preserve existing data.");
+            return false;
         }
 
-        console.warn("Backend returned no articles.");
-        return false;
+        console.log(`Received ${data.articles.length} articles from backend`);
+
+        // Only clear the collection after we've confirmed there are articles to save.
+        await clearNewsCollection();
+
+        const syncTime = Timestamp.now();
+        let savedCount = 0;
+        const savedArticles: NewsArticle[] = [];
+
+        for (const item of data.articles) {
+            // Ensure ID is safe
+            const docId = btoa(item.url || item.title).slice(0, 20);
+            const summary = item.description || item.content || '';
+            const { tag, tagColor } = classifyArticle(item.title, summary);
+            const sourceName = typeof item.source === 'string'
+                ? item.source
+                : item.source?.name || 'GNews';
+
+            const  newsData = {
+                title: item.title,
+                summary,
+                date: formatRelativeTime(item.publishedAt),
+                publishedAt: Timestamp.fromDate(new Date(item.publishedAt)),
+                syncedAt: syncTime,
+                source: sourceName,
+                imageUrl: item.image || getFallbackImage(item.title),
+                tag,
+                tagColor,
+                url: item.url
+            };
+
+            await setDoc(doc(db, 'news', docId), newsData, { merge: true });
+            savedArticles.push({
+                id: docId,
+                ...newsData
+            });
+            savedCount++;
+        }
+
+        console.log(`Successfully saved ${savedCount} articles to Firestore.`);
+        saveToCache(CACHE_KEY_NEWS, savedArticles);
+        return true;
 
     } catch (e) {
         console.error("News Sync Failed:", e);

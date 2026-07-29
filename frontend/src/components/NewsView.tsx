@@ -62,6 +62,15 @@ export const NewsView = () => {
         loadNews();
     }, []);
 
+    useEffect(() => {
+        const handleNewsSynced = () => {
+            void loadNews();
+        };
+
+        window.addEventListener('touchline:news-synced', handleNewsSynced);
+        return () => window.removeEventListener('touchline:news-synced', handleNewsSynced);
+    }, []);
+
     const filteredNews = activeCategory === 'All'
         ? news
         : news.filter(item => item.tag === activeCategory);
