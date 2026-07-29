@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'za.co.touchlinesa.app',
   appName: 'Touchline SA',
   webDir: 'dist',
+  server: {
+    androidScheme: 'http'
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
