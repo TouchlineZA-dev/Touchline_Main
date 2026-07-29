@@ -149,6 +149,87 @@ def _set_cache(db: Session, cache_key: str, data: GNewsResponse) -> None:
     db.commit()
 
 
+def _start_sync_job(db: Session, job_type: str) -> int | None:
+    """Create a sync job row, supporting databases before/after job_type exists."""
+    try:
+        row = db.execute(
+            text(
+                """
+                INSERT INTO sync.sync_jobs (status, job_type)
+                VALUES ('running', :job_type)
+                RETURNING id
+                """
+            ),
+            {"job_type": job_type},
+        ).fetchone()
+    except Exception:
+        db.rollback()
+        row = db.execute(
+            text(
+                """
+                INSERT INTO sync.sync_jobs (status)
+                VALUES ('running')
+                RETURNING id
+                """
+            )
+        ).fetchone()
+
+    db.commit()
+    return int(row[0]) if row else None
+
+
+def _write_sync_log(db: Session, sync_job_id: int | None, message: str, level: str = "info") -> None:
+    """Append a log line to sync.sync_logs when a job exists."""
+    if sync_job_id is None:
+        return
+
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO sync.sync_logs (sync_job_id, message, level)
+                VALUES (:sync_job_id, :message, :level)
+                """
+            ),
+            {"sync_job_id": sync_job_id, "message": message, "level": level},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _finish_sync_job(
+    db: Session,
+    sync_job_id: int | None,
+    status: str,
+    error_message: str | None = None,
+) -> None:
+    """Mark a sync job completed or failed."""
+    if sync_job_id is None:
+        return
+
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE sync.sync_jobs
+                SET completed_at = NOW(),
+                    status = :status,
+                    error_message = :error_message
+                WHERE id = :sync_job_id
+                """
+            ),
+            {
+                "sync_job_id": sync_job_id,
+                "status": status,
+                "error_message": error_message,
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 # ---------------------------------------------------------------------------
 # GNews API client
 # ---------------------------------------------------------------------------
@@ -183,64 +264,102 @@ class SAFootballNewsClient:
         3. Write result to cache.
         4. Return validated GNewsResponse.
         """
-        # --- 1. Cache read ---
-        if db is not None:
-            cached = _get_cached(db, cache_key)
-            if cached is not None:
-                return cached
+        sync_job_id = _start_sync_job(db, "news") if db is not None else None
 
-        # --- 2. Live API call ---
-        params = {
-            **_FIXED_PARAMS,
-            "q": query,
-            "max": max_results,
-        }
+        try:
+            _write_sync_log(db, sync_job_id, f"News sync started for {cache_key}") if db is not None else None
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{self._base}/{endpoint}", params=params)
+            # --- 1. Cache read ---
+            if db is not None:
+                cached = _get_cached(db, cache_key)
+                if cached is not None:
+                    _write_sync_log(
+                        db,
+                        sync_job_id,
+                        f"News cache hit for {cache_key}; returned {len(cached.articles)} articles",
+                    )
+                    _finish_sync_job(db, sync_job_id, "success")
+                    return cached
 
-        response.raise_for_status()
-        result = GNewsResponse.model_validate(response.json())
+            # --- 2. Live API call ---
+            params = {
+                **_FIXED_PARAMS,
+                "q": query,
+                "max": max_results,
+            }
 
-        combined_articles: list[dict] = [a.model_dump() for a in result.articles]
-        if self._newsapi_key:
-            try:
-                other = await self._fetch_newsapi_ai(query, max_results)
-                combined_articles = _interleave_articles(combined_articles, other)
-            except Exception as exc:  # pragma: no cover - defensive
-                print(f"Warning: NewsAPI.ai fetch failed: {exc}")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self._base}/{endpoint}", params=params)
 
-        # Deduplicate by URL while preserving order
-        seen: dict[str, dict] = {}
-        for art in combined_articles:
-            if not _is_sa_football_article(art):
-                continue
-            url = (art.get("url") or "").strip()
-            title_key = (art.get("title") or "").strip().lower()
-            key = title_key or url.lower()
-            if key and key not in seen:
-                # Ensure source is a plain dict with name/url
-                src = art.get("source") or {}
-                if not isinstance(src, dict):
-                    src = {"name": str(src), "url": ""}
-                seen[key] = {
-                    "title": art.get("title") or "",
-                    "description": art.get("description"),
-                    "content": art.get("content"),
-                    "url": art.get("url") or "",
-                    "image": art.get("image"),
-                    "publishedAt": art.get("publishedAt") or art.get("published_at") or "",
-                    "source": {"name": src.get("name") or "", "url": src.get("url") or ""},
-                }
+            response.raise_for_status()
+            result = GNewsResponse.model_validate(response.json())
+            _write_sync_log(
+                db,
+                sync_job_id,
+                f"GNews returned {len(result.articles)} articles",
+            ) if db is not None else None
 
-        final_list = list(seen.values())[:max_results]
-        final_response = GNewsResponse.model_validate({"totalArticles": len(final_list), "articles": final_list})
+            combined_articles: list[dict] = [a.model_dump() for a in result.articles]
+            if self._newsapi_key:
+                try:
+                    other = await self._fetch_newsapi_ai(query, max_results)
+                    combined_articles = _interleave_articles(combined_articles, other)
+                    _write_sync_log(
+                        db,
+                        sync_job_id,
+                        f"NewsAPI.ai returned {len(other)} articles",
+                    ) if db is not None else None
+                except Exception as exc:  # pragma: no cover - defensive
+                    _write_sync_log(
+                        db,
+                        sync_job_id,
+                        f"NewsAPI.ai fetch failed: {exc}",
+                        "warning",
+                    ) if db is not None else None
+                    print(f"Warning: NewsAPI.ai fetch failed: {exc}")
 
-        # --- 3. Cache write ---
-        if db is not None:
-            _set_cache(db, cache_key, final_response)
+            # Deduplicate by URL while preserving order
+            seen: dict[str, dict] = {}
+            for art in combined_articles:
+                if not _is_sa_football_article(art):
+                    continue
+                url = (art.get("url") or "").strip()
+                title_key = (art.get("title") or "").strip().lower()
+                key = title_key or url.lower()
+                if key and key not in seen:
+                    # Ensure source is a plain dict with name/url
+                    src = art.get("source") or {}
+                    if not isinstance(src, dict):
+                        src = {"name": str(src), "url": ""}
+                    seen[key] = {
+                        "title": art.get("title") or "",
+                        "description": art.get("description"),
+                        "content": art.get("content"),
+                        "url": art.get("url") or "",
+                        "image": art.get("image"),
+                        "publishedAt": art.get("publishedAt") or art.get("published_at") or "",
+                        "source": {"name": src.get("name") or "", "url": src.get("url") or ""},
+                    }
 
-        return final_response
+            final_list = list(seen.values())[:max_results]
+            final_response = GNewsResponse.model_validate({"totalArticles": len(final_list), "articles": final_list})
+
+            # --- 3. Cache write ---
+            if db is not None:
+                _set_cache(db, cache_key, final_response)
+                _write_sync_log(
+                    db,
+                    sync_job_id,
+                    f"News sync completed; cached {len(final_response.articles)} articles",
+                )
+                _finish_sync_job(db, sync_job_id, "success")
+
+            return final_response
+        except Exception as exc:
+            if db is not None:
+                _write_sync_log(db, sync_job_id, f"News sync failed: {exc}", "error")
+                _finish_sync_job(db, sync_job_id, "failed", str(exc))
+            raise
 
     async def _fetch_newsapi_ai(self, query: str, max_results: int) -> list[dict]:
         """
