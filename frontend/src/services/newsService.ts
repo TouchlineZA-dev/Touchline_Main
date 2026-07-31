@@ -1,5 +1,5 @@
 import { db } from '@/integrations/firebase/client';
-import { collection, getDoc, getDocs, setDoc, doc, deleteDoc, query, orderBy, limit, Timestamp, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, query, orderBy, limit, Timestamp } from 'firebase/firestore';
 
 export interface NewsArticle {
     id: string;
@@ -22,9 +22,6 @@ export const getStoredNewsApiKey = () => {
     return localStorage.getItem('psl_user_api_key');
 };
 
-const NEWS_API_ORG_KEY = import.meta.env.VITE_NEWS_API_KEY || "";
-const GNEWS_API_KEY = import.meta.env.VITE_GNEWS_API_KEY || "";
-const JINA_API_KEY = import.meta.env.VITE_JINA_API_KEY || "";
 const API_FOOTBALL_KEY = import.meta.env.VITE_RAPID_API_KEY || "";
 const HARDCODED_API_KEY = import.meta.env.VITE_RAPID_API_KEY || "";
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
@@ -33,10 +30,6 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\
 const CACHE_KEY_NEWS = 'cached_psl_news_v2';
 const CACHE_KEY_FIXTURES = 'cached_live_fixtures';
 const CACHE_DURATION = 1000 * 60 * 60 * 24; // 24 hours
-const NEWS_SYNC_INTERVAL_MS = 1000 * 60 * 60 * 12; // 12 hours
-const NEWS_CONTENT_STALE_MS = 1000 * 60 * 60 * 48; // 48 hours
-const NEWS_SYNC_LOCK_MS = 1000 * 60 * 2; // 2 minutes
-const NEWS_SYNC_STATE_DOC = doc(db, 'sync_state', 'news');
 
 const saveToCache = (key: string, data: any) => {
     try {
@@ -67,125 +60,13 @@ const getFromCache = (key: string): any | null => {
     }
 };
 
-export const fetchPSLNews = async (apiKey: string): Promise<NewsArticle[]> => {
+const articleId = (item: any): string => {
     try {
-        const newsRef = collection(db, 'news');
-        const q = query(newsRef, orderBy('publishedAt', 'desc'), limit(20));
-        const querySnapshot = await getDocs(q);
-
-        const cachedNews = querySnapshot.docs.map(doc => ({
-            ...doc.data(),
-            id: doc.id
-        })) as NewsArticle[];
-
-        saveToCache(CACHE_KEY_NEWS, cachedNews);
-        return cachedNews;
-    } catch (e) {
-        console.warn("Firestore fetch/sync failed, checking local cache...", e);
-        const localCached = getFromCache(CACHE_KEY_NEWS);
-        if (localCached) return localCached;
-
-        // If we have no cache and an error occurred, propagate it
-        throw new Error(e instanceof Error ? e.message : "Failed to connect to news service");
-    }
-};
-
-const getLatestNewsState = async () => {
-    const newsRef = collection(db, 'news');
-    const q = query(newsRef, orderBy('publishedAt', 'desc'), limit(1));
-    const querySnapshot = await getDocs(q);
-    const latestArticle = querySnapshot.docs[0]?.data() as NewsArticle | undefined;
-    const latestArticleTime = latestArticle?.publishedAt && typeof latestArticle.publishedAt.toMillis === 'function'
-        ? latestArticle.publishedAt.toMillis()
-        : 0;
-    const lastArticleSyncTime = latestArticle && (latestArticle as any).syncedAt && typeof (latestArticle as any).syncedAt.toMillis === 'function'
-        ? (latestArticle as any).syncedAt.toMillis()
-        : 0;
-
-    return {
-        hasNews: !querySnapshot.empty,
-        latestArticleTime,
-        lastArticleSyncTime,
-    };
-};
-
-export const ensureNewsSyncedAfterLogin = async (userId: string): Promise<boolean> => {
-    try {
-        const newsState = await getLatestNewsState();
-        const syncStateSnapshot = await getDoc(NEWS_SYNC_STATE_DOC);
-        const syncState = syncStateSnapshot.exists() ? syncStateSnapshot.data() : {};
-        const lastCompletedAt = syncState.lastCompletedAt && typeof syncState.lastCompletedAt.toMillis === 'function'
-            ? syncState.lastCompletedAt.toMillis()
-            : 0;
-
-        const now = Date.now();
-        const isSyncStale = now - Math.max(lastCompletedAt, newsState.lastArticleSyncTime) > NEWS_SYNC_INTERVAL_MS;
-        const isContentStale = !newsState.hasNews || now - newsState.latestArticleTime > NEWS_CONTENT_STALE_MS;
-
-        if (!isSyncStale && !isContentStale) {
-            return false;
-        }
-
-        const lockAcquired = await runTransaction(db, async (transaction) => {
-            const stateSnapshot = await transaction.get(NEWS_SYNC_STATE_DOC);
-            const state = stateSnapshot.exists() ? stateSnapshot.data() : {};
-            const lockUntil = state.lockUntil && typeof state.lockUntil.toMillis === 'function'
-                ? state.lockUntil.toMillis()
-                : 0;
-            const completedAt = state.lastCompletedAt && typeof state.lastCompletedAt.toMillis === 'function'
-                ? state.lastCompletedAt.toMillis()
-                : 0;
-
-            if (lockUntil > now) {
-                return false;
-            }
-
-            if (newsState.hasNews && completedAt && now - completedAt <= NEWS_SYNC_INTERVAL_MS) {
-                return false;
-            }
-
-            transaction.set(NEWS_SYNC_STATE_DOC, {
-                status: 'running',
-                lockUntil: Timestamp.fromDate(new Date(now + NEWS_SYNC_LOCK_MS)),
-                lastAttemptAt: Timestamp.fromDate(new Date(now)),
-                triggeredBy: userId,
-            }, { merge: true });
-
-            return true;
-        });
-
-        if (!lockAcquired) {
-            return false;
-        }
-
-        const success = await syncNewsWithAPI('');
-        const completedAt = Timestamp.now();
-        await setDoc(NEWS_SYNC_STATE_DOC, {
-            status: success ? 'completed' : 'failed',
-            lastCompletedAt: success ? completedAt : syncState.lastCompletedAt || null,
-            lastFailedAt: success ? null : completedAt,
-            lockUntil: completedAt,
-            triggeredBy: userId,
-        }, { merge: true });
-
-        if (success && typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('touchline:news-synced'));
-        }
-
-        return success;
-    } catch (e) {
-        console.warn('News login sync failed:', e);
-        try {
-            await setDoc(NEWS_SYNC_STATE_DOC, {
-                status: 'failed',
-                lastFailedAt: Timestamp.now(),
-                lockUntil: Timestamp.now(),
-                triggeredBy: userId,
-            }, { merge: true });
-        } catch {
-            // Ignore metadata write failures; the News page can still read cached data.
-        }
-        return false;
+        return btoa(item.url || item.title || String(Date.now()))
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .slice(0, 20);
+    } catch {
+        return `news_${Date.now()}`;
     }
 };
 
@@ -250,79 +131,82 @@ const classifyArticle = (title: string, summary: string): { tag: string; tagColo
     return { tag: 'PSL Giants', tagColor: 'bg-green-600' };
 };
 
-const clearNewsCollection = async () => {
+const mapBackendArticle = (item: any): NewsArticle => {
+    const summary = item.summary || item.description || item.content || '';
+    const title = item.title || 'Untitled story';
+    const { tag, tagColor } = classifyArticle(title, summary);
+    const sourceName = typeof item.source === 'string'
+        ? item.source
+        : item.source?.name || 'Touchline News';
+
+    return {
+        id: articleId(item),
+        title,
+        summary,
+        date: formatRelativeTime(item.publishedAt),
+        publishedAt: item.publishedAt,
+        source: sourceName,
+        imageUrl: item.imageUrl || item.image || getFallbackImage(title),
+        tag: item.tag || tag,
+        tagColor: item.tagColor || tagColor,
+        url: item.url || '#'
+    };
+};
+
+const fetchNewsFromBackend = async (max = 10): Promise<NewsArticle[]> => {
+    const response = await fetch(`${API_BASE_URL}/news/headlines?max=${max}`);
+
+    if (!response.ok) {
+        throw new Error(`Backend request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.articles || !Array.isArray(data.articles)) {
+        return [];
+    }
+
+    return data.articles.map(mapBackendArticle);
+};
+
+export const fetchPSLNews = async (_apiKey: string): Promise<NewsArticle[]> => {
     try {
-        const newsRef = collection(db, 'news');
-        const snapshot = await getDocs(newsRef);
-        if (!snapshot.empty) {
-            console.log(`Clearing ${snapshot.size} old news articles...`);
-            const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-            await Promise.all(deletePromises);
-            console.log('Old news articles cleared.');
-        }
+        const articles = await fetchNewsFromBackend(10);
+        saveToCache(CACHE_KEY_NEWS, articles);
+        return articles;
     } catch (e) {
-        console.error('Error clearing news collection:', e);
+        console.warn("Supabase news fetch failed, checking local cache...", e);
+        const localCached = getFromCache(CACHE_KEY_NEWS);
+        if (localCached) return localCached;
+
+        throw new Error(e instanceof Error ? e.message : "Failed to connect to news service");
     }
 };
 
-export const syncNewsWithAPI = async (apiKey?: string) => {
-    console.log("Starting News Sync via merged backend API...");
+export const ensureNewsSyncedAfterLogin = async (_userId: string): Promise<boolean> => {
+    try {
+        const articles = await fetchPSLNews('');
+        if (articles.length > 0 && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('touchline:news-synced'));
+        }
+        return articles.length > 0;
+    } catch (e) {
+        console.warn('News login sync failed:', e);
+        return false;
+    }
+};
+
+export const syncNewsWithAPI = async (_apiKey?: string) => {
+    console.log("Fetching news from Supabase-backed backend API...");
 
     try {
-        const response = await fetch(`${API_BASE_URL}/news/headlines?max=10`);
-
-        if (!response.ok) {
-            throw new Error(`Backend request failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (!data.articles || !Array.isArray(data.articles) || data.articles.length === 0) {
+        const articles = await fetchNewsFromBackend(10);
+        if (articles.length === 0) {
             console.warn("Backend returned no articles. Skipping clear/write to preserve existing data.");
             return false;
         }
 
-        console.log(`Received ${data.articles.length} articles from backend`);
-
-        // Only clear the collection after we've confirmed there are articles to save.
-        await clearNewsCollection();
-
-        const syncTime = Timestamp.now();
-        let savedCount = 0;
-        const savedArticles: NewsArticle[] = [];
-
-        for (const item of data.articles) {
-            // Ensure ID is safe
-            const docId = btoa(item.url || item.title).slice(0, 20);
-            const summary = item.description || item.content || '';
-            const { tag, tagColor } = classifyArticle(item.title, summary);
-            const sourceName = typeof item.source === 'string'
-                ? item.source
-                : item.source?.name || 'GNews';
-
-            const  newsData = {
-                title: item.title,
-                summary,
-                date: formatRelativeTime(item.publishedAt),
-                publishedAt: Timestamp.fromDate(new Date(item.publishedAt)),
-                syncedAt: syncTime,
-                source: sourceName,
-                imageUrl: item.image || getFallbackImage(item.title),
-                tag,
-                tagColor,
-                url: item.url
-            };
-
-            await setDoc(doc(db, 'news', docId), newsData, { merge: true });
-            savedArticles.push({
-                id: docId,
-                ...newsData
-            });
-            savedCount++;
-        }
-
-        console.log(`Successfully saved ${savedCount} articles to Firestore.`);
-        saveToCache(CACHE_KEY_NEWS, savedArticles);
+        console.log(`Received ${articles.length} articles from Supabase-backed backend`);
+        saveToCache(CACHE_KEY_NEWS, articles);
         return true;
 
     } catch (e) {
