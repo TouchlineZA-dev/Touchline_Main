@@ -20,11 +20,24 @@ export const handler = async () => {
             configured: Boolean(rawUrl),
             hadTrailingSlash: /\/$/.test(rawUrl.trim()),
             hadWhitespace: rawUrl !== rawUrl.trim(),
-            host: (() => {
+            ...(() => {
                 try {
-                    return new URL(rawUrl.trim()).host;
+                    const parsed = new URL(rawUrl.trim());
+                    return {
+                        host: parsed.host,
+                        // Must be "/" — supabase-js appends /rest/v1 itself, so
+                        // any other path here doubles up and yields PGRST125.
+                        path: parsed.pathname,
+                        pathIsClean: parsed.pathname === '/' || parsed.pathname === '',
+                        originUsed: parsed.origin
+                    };
                 } catch {
-                    return rawUrl ? 'UNPARSEABLE — is this a full https:// URL?' : null;
+                    return {
+                        host: rawUrl ? 'UNPARSEABLE — is this a full https:// URL?' : null,
+                        path: null,
+                        pathIsClean: false,
+                        originUsed: null
+                    };
                 }
             })()
         },
