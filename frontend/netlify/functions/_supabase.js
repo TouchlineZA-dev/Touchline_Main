@@ -16,9 +16,18 @@ export const jsonResponse = (statusCode, body) => ({
 });
 
 export const getSupabaseClient = () => {
-    // A trailing slash makes the client build "..././/rest/v1/..." and Supabase
-    // rejects it with "Invalid path specified in request URL", so normalise it.
-    const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    // supabase-js appends "/rest/v1/..." itself, so it needs the bare project
+    // origin. A trailing slash or a pasted "/rest/v1" suffix both produce a
+    // malformed path and Supabase rejects it with PGRST125, "Invalid path
+    // specified in request URL". Reduce whatever is configured to its origin.
+    const rawUrl = (process.env.SUPABASE_URL || '').trim();
+    let url = rawUrl.replace(/\/+$/, '');
+    try {
+        url = new URL(rawUrl).origin;
+    } catch {
+        // Not parseable as a URL — fall through with the trimmed value so the
+        // caller still gets a meaningful error rather than a crash here.
+    }
     const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
     if (!url || !key) {
