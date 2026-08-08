@@ -16,8 +16,10 @@ export const jsonResponse = (statusCode, body) => ({
 });
 
 export const getSupabaseClient = () => {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    // A trailing slash makes the client build "..././/rest/v1/..." and Supabase
+    // rejects it with "Invalid path specified in request URL", so normalise it.
+    const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
     if (!url || !key) {
         return null;
