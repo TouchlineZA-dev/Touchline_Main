@@ -3,8 +3,11 @@
   publish = "dist"
   functions = "netlify/functions"
 
-[context.production.environment]
-  NODE_VERSION = "20"
+[build.environment]
+  # Node 22+: supabase-js constructs a realtime client on startup, which needs a
+  # native WebSocket. Node 20 has none, so every function throws on the first
+  # createClient() call. Applies to all contexts, not just production.
+  NODE_VERSION = "22"
 
 [[redirects]]
   from = "/api/v1/news/headlines"
