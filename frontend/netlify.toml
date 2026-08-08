@@ -13,6 +13,30 @@
   force = true
 
 [[redirects]]
+  from = "/api/v1/players"
+  to = "/.netlify/functions/players"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/v1/fixtures"
+  to = "/.netlify/functions/fixtures"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/v1/standings"
+  to = "/.netlify/functions/standings"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/v1/matches"
+  to = "/.netlify/functions/matches"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
