@@ -189,6 +189,32 @@ export const fetchStandings = () =>
 export const fetchMatchDetail = (fixtureId: number) =>
     get<ApiMatchDetail>(`/matches?fixtureId=${fixtureId}`);
 
+export interface ApiArticle {
+    title: string;
+    summary: string;
+    description: string;
+    content: string;
+    url: string;
+    imageUrl: string;
+    image: string;
+    publishedAt: string;
+    source: { name: string; url: string };
+    tag?: string;
+    tagColor?: string;
+}
+
+export interface ApiNewsResponse {
+    totalArticles: number;
+    articles: ApiArticle[];
+    /** Which cache table answered, or null when none could be read. */
+    source: string | null;
+    fetchedAt?: string | null;
+    /** Set when no cache was reachable — the UI shows an explanatory empty state. */
+    unavailable?: boolean;
+}
+
+export const fetchNews = (max = 10) => get<ApiNewsResponse>(`/news/headlines?max=${max}`);
+
 /** Fixture states that mean the result is final — BACKEND_INTEGRATION.md §6. */
 export const FINAL_STATE_IDS = [5, 7, 8];
 

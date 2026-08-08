@@ -13,6 +13,7 @@ import {
 import { FixtureRow } from './FixtureRow';
 import { StandingsTable } from './StandingsTable';
 import { MatchDetail } from './MatchDetail';
+import { NewsList } from './NewsList';
 
 /** Live scores move; poll while the tab is open. */
 const REFRESH_MS = 60_000;
@@ -160,10 +161,11 @@ export const FootballDashboard = () => {
                         )}
 
                         <Tabs defaultValue="fixtures">
-                            <TabsList className="grid w-full grid-cols-3">
+                            <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
                                 <TabsTrigger value="results">Results</TabsTrigger>
                                 <TabsTrigger value="table">Table</TabsTrigger>
+                                <TabsTrigger value="news">News</TabsTrigger>
                             </TabsList>
 
                             <TabsContent value="fixtures" className="mt-4">
@@ -187,6 +189,10 @@ export const FootballDashboard = () => {
                                 <p className="mt-3 text-xs text-muted-foreground">
                                     Table calculated from completed matches only.
                                 </p>
+                            </TabsContent>
+
+                            <TabsContent value="news" className="mt-4">
+                                <NewsList />
                             </TabsContent>
                         </Tabs>
                     </>
