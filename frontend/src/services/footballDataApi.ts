@@ -18,13 +18,7 @@ export interface TransformedPlayer {
   imageUrl?: string;
 }
 
-const API_KEY = import.meta.env.VITE_RAPID_API_KEY || '1a5d324f62mshf82070b791b2f3ap10994fjsnd9dc8ed92749';
-const API_HOST = 'api-football-v1.p.rapidapi.com';
-const BASE_URL = 'https://api-football-v1.p.rapidapi.com/v3';
-const LEAGUE_ID = 288; // South Africa Premier Soccer League
-const SEASON = 2024; // Current Season
-
-// Helper to map API positions
+// Helper to map provider/sync-worker positions into app positions.
 const mapPosition = (pos: string): 'GK' | 'DEF' | 'MID' | 'ATT' => {
   if (!pos) return 'MID';
   if (pos === 'Goalkeeper') return 'GK';
@@ -75,95 +69,8 @@ const generateAttributes = (position: string, rating: number = 70) => {
 };
 
 export const fetchTeamData = async (): Promise<TransformedPlayer[]> => {
-  console.log(`[API] Fetching PSL Players from API-Football for League ${LEAGUE_ID} Season ${SEASON}...`);
-
-  try {
-    // Requires pagination handling in production, but for MVP we fetch page 1 (or multiple if needed)
-    // API-Football returns squads team by team usually, or players by league with pagination.
-    // Fetching /teams first, then squads is better to get all players efficiently without 50 pages of players.
-
-    // Step 1: Get Teams
-    const teamsResponse = await fetch(`${BASE_URL}/teams?league=${LEAGUE_ID}&season=${SEASON}`, {
-      method: "GET",
-      headers: {
-        "x-rapidapi-host": API_HOST,
-        "x-rapidapi-key": API_KEY
-      }
-    });
-
-    if (!teamsResponse.ok) throw new Error("Failed to fetch teams");
-    const teamsData = await teamsResponse.json();
-
-    if (teamsData.errors && Object.keys(teamsData.errors).length > 0) {
-      console.error("API Errors:", teamsData.errors);
-      // Fallback to manual data if API limit reached or error
-      return getEnhancedPSLData();
-    }
-
-    const allPlayers: TransformedPlayer[] = [];
-    const teams = teamsData.response; // Array of { team: {...}, venue: {...} }
-
-    // Step 2: For each team, get the squad
-    // Note: Rate limits! We might need to throttle or cache this. 
-    // RapidAPI Free tier is 100 req/day. PSL has 16 teams. 1 (teams) + 16 (squads) = 17 requests. Safe for a demo run.
-
-    for (const item of teams) {
-      const teamId = item.team.id;
-      const teamName = item.team.name;
-
-      // Fetch Squad
-      const squadResponse = await fetch(`${BASE_URL}/players/squads?team=${teamId}`, {
-        headers: {
-          "x-rapidapi-host": API_HOST,
-          "x-rapidapi-key": API_KEY
-        }
-      });
-
-      const squadData = await squadResponse.json();
-      const squad = squadData.response[0]?.players || [];
-
-      squad.forEach((p: any) => {
-        if (p.position) { // Only add if position is known
-          const mappedPos = mapPosition(p.position);
-          const rating = p.age ? (60 + Math.floor(Math.random() * 25)) : 70; // API-Football Squad endpoint doesn't give rating, only basic info. 
-          // To get RATINGS, we'd need /players endpoint which is expensive (pagination).
-          // Strategy: Use squad list + Mocked ratings based on 'realism' or random for MVP, 
-          // OR switch to /players endpoint if user has a Pro plan. 
-          // Given "robust" request, let's try to be smart. 
-          // For now, we will generate decent stats.
-
-          const stats = generateAttributes(mappedPos, rating);
-
-          allPlayers.push({
-            id: String(p.id),
-            name: p.name,
-            position: mappedPos,
-            team: teamName,
-            nationality: 'South Africa', // API squad doesn't always have nationality per player easily without extra calls. Defaulting for MVP speed.
-            rating: stats.rating,
-            pace: stats.pace,
-            shooting: stats.shooting,
-            passing: stats.passing,
-            defending: stats.defending,
-            dribbling: stats.dribbling,
-            physical: stats.physical,
-            price: calculateCost(stats.rating),
-            imageUrl: p.photo
-          });
-        }
-      });
-
-      // Slight delay to be nice to API
-      await new Promise(r => setTimeout(r, 200));
-    }
-
-    console.log(`[API] Successfully fetched ${allPlayers.length} players.`);
-    return allPlayers;
-
-  } catch (error) {
-    console.error("[API] Error fetching data:", error);
-    return getEnhancedPSLData(); // Fallback
-  }
+  console.log('[DB-only] Player provider calls are disabled in the browser. Use Supabase/backend data or the local fallback.');
+  return getEnhancedPSLData();
 };
 
 // Keep the fallback for offline/error modes

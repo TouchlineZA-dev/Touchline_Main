@@ -1,139 +1,125 @@
-// const fetch = require('node-fetch'); // Removed: node-fetch v3 is ESM-only. Node 18+ has global fetch.
+import { createClient } from '@supabase/supabase-js';
 
-// --- Helper Functions ---
+const jsonResponse = (statusCode, body) => ({
+    statusCode,
+    headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+});
 
-const getThreeWeeksAgoDate = () => {
-    const date = new Date();
-    date.setDate(date.getDate() - 21);
-    return date.toISOString().split('T')[0];
-};
-
-const getFallbackImage = (title) => {
-    const lowerTitle = title.toLowerCase();
-    if (lowerTitle.includes('chiefs') || lowerTitle.includes('amakhosi')) return 'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?auto=format&fit=crop&q=80&w=800';
-    if (lowerTitle.includes('pirates') || lowerTitle.includes('buccaneers')) return 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&q=80&w=800';
-    if (lowerTitle.includes('sundowns') || lowerTitle.includes('downs')) return 'https://images.unsplash.com/photo-1614632537423-1e6c2e7e0aab?auto=format&fit=crop&q=80&w=800';
-    if (lowerTitle.includes('bafana')) return 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&q=80&w=800';
-    if (lowerTitle.includes('transfer')) return 'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&q=80&w=800';
-    return 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&q=80&w=800';
-};
-
-const normalizeArticle = (item, source) => {
-    const title = item.title;
-    const lowerTitle = title.toLowerCase();
-
-    let tag = 'Soccer';
-    let tagColor = 'bg-blue-600';
-
-    if (lowerTitle.includes('chiefs') || lowerTitle.includes('pirates') || lowerTitle.includes('sundowns')) {
-        tag = 'PSL Giants';
-        tagColor = 'bg-yellow-600';
-    } else if (lowerTitle.includes('transfer') || lowerTitle.includes('sign')) {
-        tag = 'Transfer News';
-        tagColor = 'bg-purple-600';
-    } else if (lowerTitle.includes('bafana') || lowerTitle.includes('banyana')) {
-        tag = 'National Team';
-        tagColor = 'bg-green-600';
-    } else if (lowerTitle.includes('psl') || lowerTitle.includes('premiership')) {
-        tag = 'PSL';
-        tagColor = 'bg-green-600';
-    }
-
-    // Determine published date
-    const dateStr = item.publishedAt || item.publishedTime || new Date().toISOString();
+const normalizeArticle = (item) => {
+    const source = typeof item.source === 'string'
+        ? { name: item.source, url: '' }
+        : item.source || { name: 'Touchline News', url: '' };
 
     return {
-        title: item.title,
-        summary: item.description || item.content || '',
-        publishedAt: dateStr,
-        source: source,
-        imageUrl: item.urlToImage || item.image || getFallbackImage(item.title),
-        url: item.url,
-        tag,
-        tagColor
+        title: item.title || 'Untitled story',
+        summary: item.summary || item.description || item.content || '',
+        description: item.description || item.summary || item.content || '',
+        content: item.content || item.summary || item.description || '',
+        url: item.url || '#',
+        imageUrl: item.imageUrl || item.image || '',
+        image: item.image || item.imageUrl || '',
+        publishedAt: item.publishedAt || item.published_at || new Date().toISOString(),
+        source,
+        tag: item.tag,
+        tagColor: item.tagColor
     };
 };
 
-export const handler = async (event, context) => {
-    const NEWS_API_KEY = process.env.NEWS_API_ORG_KEY;
-    const GNEWS_API_KEY = process.env.GNEWS_API_KEY;
+const getSupabaseClient = () => {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
-    if (!NEWS_API_KEY && !GNEWS_API_KEY) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: "Server API Keys not configured" }),
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            }
-        };
+    if (!url || !key) {
+        return null;
+    }
+
+    return createClient(url, key, {
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false
+        }
+    });
+};
+
+const fetchCachedNews = async (supabase, maxResults) => {
+    const exactKey = `headlines:v2:${maxResults}`;
+    const appSchema = supabase.schema('app');
+
+    const exact = await appSchema
+        .from('news_cache')
+        .select('response,fetched_at')
+        .eq('cache_key', exactKey)
+        .order('fetched_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (exact.error) {
+        throw exact.error;
+    }
+
+    if (exact.data?.response) {
+        return exact.data.response;
+    }
+
+    const latest = await appSchema
+        .from('news_cache')
+        .select('response,fetched_at')
+        .like('cache_key', 'headlines%')
+        .order('fetched_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (latest.error) {
+        throw latest.error;
+    }
+
+    return latest.data?.response || { totalArticles: 0, articles: [] };
+};
+
+export const handler = async (event) => {
+    if (event.httpMethod === 'OPTIONS') {
+        return jsonResponse(204, {});
+    }
+
+    if (event.httpMethod !== 'GET') {
+        return jsonResponse(405, { error: 'Method not allowed' });
+    }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+        return jsonResponse(500, {
+            error: 'Supabase environment variables are not configured',
+            articles: []
+        });
     }
 
     try {
-        // 1. Try NewsAPI (Primary)
-        if (NEWS_API_KEY) {
-            try {
-                const start = getThreeWeeksAgoDate();
-                // Strict query: Must contain 'soccer' or 'football' AND one of the SA specific terms
-                // Explicitly EXCLUDE rugby, cricket, horse racing, AND American Football terms (NFL, QB)
-                const query = '(soccer OR football) AND ("South Africa" OR "PSL" OR "Betway Premiership" OR "Kaizer Chiefs" OR "Orlando Pirates" OR "Mamelodi Sundowns" OR "Bafana Bafana") AND NOT (rugby OR cricket OR horse OR racing OR "horse racing" OR NFL OR quarterback OR touchdown OR "american football")';
-                const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&from=${start}&sortBy=publishedAt&language=en&apiKey=${NEWS_API_KEY}`;
+        const maxParam = Number(event.queryStringParameters?.max || 10);
+        const maxResults = Number.isFinite(maxParam)
+            ? Math.max(1, Math.min(10, Math.floor(maxParam)))
+            : 10;
 
-                const response = await fetch(url);
-                const data = await response.json();
+        const cached = await fetchCachedNews(supabase, maxResults);
+        const articles = Array.isArray(cached.articles)
+            ? cached.articles.slice(0, maxResults).map(normalizeArticle)
+            : [];
 
-                if (response.ok && data.status === 'ok' && Array.isArray(data.articles) && data.articles.length > 0) {
-                    const validArticles = data.articles
-                        .filter(a => a.title !== '[Removed]')
-                        .map(a => normalizeArticle(a, a.source.name || 'NewsAPI'));
-
-                    return {
-                        statusCode: 200,
-                        headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ articles: validArticles, source: 'NewsAPI' })
-                    };
-                }
-                console.warn("NewsAPI returned empty or error", data);
-            } catch (e) {
-                console.error("NewsAPI Exception:", e);
-            }
-        }
-
-        // 2. Try GNews (Fallback)
-        if (GNEWS_API_KEY) {
-            try {
-                const query = '(soccer OR football) AND ("South Africa" OR PSL OR "Betway Premiership" OR "Kaizer Chiefs" OR "Orlando Pirates" OR "Sundowns") AND NOT (rugby OR cricket OR horse OR racing OR NFL OR quarterback)';
-                const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&country=za&max=10&apikey=${GNEWS_API_KEY}`;
-
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (response.ok && data.articles) {
-                    const validArticles = data.articles.map(a => normalizeArticle(a, a.source.name || 'GNews'));
-                    return {
-                        statusCode: 200,
-                        headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ articles: validArticles, source: 'GNews' })
-                    };
-                }
-            } catch (e) {
-                console.error("GNews Exception:", e);
-            }
-        }
-
-        // 3. All Failed
-        return {
-            statusCode: 503,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: "All news sources failed", articles: [] })
-        };
-
-    } catch (e) {
-        console.error("CRITICAL FAILURE:", e);
-        return {
-            statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: e.message })
-        };
+        return jsonResponse(200, {
+            totalArticles: articles.length,
+            articles,
+            source: 'supabase'
+        });
+    } catch (error) {
+        console.error('Supabase news read failed:', error);
+        return jsonResponse(500, {
+            error: 'Failed to read news from Supabase',
+            articles: []
+        });
     }
 };

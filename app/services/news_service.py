@@ -1,27 +1,20 @@
 """
 SAFootballNewsClient
 --------------------
-Wraps the GNews API and is strictly scoped to South African football.
+Runtime news reads are DB-only.
 
-Every request is hardcoded with:
-  - country = za
-  - lang    = en
-
-Query strings are automatically enriched with SA football context so that
-callers can never accidentally retrieve non-SA or non-football content.
-
-Results are cached in app.news_cache (Supabase / PostgreSQL) for
-`settings.gnews_cache_ttl_minutes` minutes to preserve the daily API quota.
+The public app should not call external providers. Separate sync workers are
+responsible for filling app.news_cache from GNews/other providers. API requests
+only read the latest cached Supabase/PostgreSQL rows and return an empty result
+if the database has no news yet.
 """
 
 import json
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.schemas.news import GNewsResponse
 
 # ---------------------------------------------------------------------------
@@ -54,13 +47,6 @@ _SA_FOOTBALL_TERMS = (
     "polokwane city",
     "ts galaxy",
 )
-
-_FIXED_PARAMS = {
-    "country": "za",
-    "lang": "en",
-    "token": settings.gnews_api_key,
-}
-
 
 def _build_query(user_query: str) -> str:
     """
@@ -100,14 +86,14 @@ def _is_sa_football_article(article: dict) -> bool:
 # ---------------------------------------------------------------------------
 
 def _get_cached(db: Session, cache_key: str) -> GNewsResponse | None:
-    """Return a cached GNewsResponse if it exists and has not expired."""
+    """Return the newest cached GNewsResponse for this key, even if stale."""
     row = db.execute(
         text(
             """
             SELECT response
             FROM   app.news_cache
             WHERE  cache_key  = :key
-              AND  expires_at > NOW()
+            ORDER BY fetched_at DESC
             LIMIT 1
             """
         ),
@@ -121,32 +107,6 @@ def _get_cached(db: Session, cache_key: str) -> GNewsResponse | None:
     if isinstance(payload, str):
         payload = json.loads(payload)
     return GNewsResponse.model_validate(payload)
-
-
-def _set_cache(db: Session, cache_key: str, data: GNewsResponse) -> None:
-    """Upsert a GNewsResponse into the cache with a TTL-based expiry."""
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.gnews_cache_ttl_minutes
-    )
-    db.execute(
-        text(
-            """
-            INSERT INTO app.news_cache (cache_key, response, fetched_at, expires_at)
-            VALUES (:key, CAST(:response AS JSONB), NOW(), :expires_at)
-            ON CONFLICT (cache_key)
-            DO UPDATE SET
-                response   = EXCLUDED.response,
-                fetched_at = NOW(),
-                expires_at = EXCLUDED.expires_at
-            """
-        ),
-        {
-            "key": cache_key,
-            "response": json.dumps(data.model_dump()),
-            "expires_at": expires_at,
-        },
-    )
-    db.commit()
 
 
 def _start_sync_job(db: Session, job_type: str) -> int | None:
@@ -244,10 +204,7 @@ class SAFootballNewsClient:
     """
 
     def __init__(self) -> None:
-        self._base = settings.gnews_base_url.rstrip("/")
-        # Optional secondary provider (NewsAPI.ai)
-        self._newsapi_base = settings.newsapi_ai_base_url.rstrip("/")
-        self._newsapi_key = settings.newsapi_ai_api_key
+        pass
 
     async def _fetch(
         self,
@@ -259,17 +216,14 @@ class SAFootballNewsClient:
     ) -> GNewsResponse:
         """
         Core fetch method.
-        1. Check cache (if db supplied).
-        2. Call GNews API.
-        3. Write result to cache.
-        4. Return validated GNewsResponse.
+        Runtime reads are DB-only. External providers are only called by sync
+        workers, never by user-facing API requests.
         """
         sync_job_id = _start_sync_job(db, "news") if db is not None else None
 
         try:
-            _write_sync_log(db, sync_job_id, f"News sync started for {cache_key}") if db is not None else None
+            _write_sync_log(db, sync_job_id, f"News DB read started for {cache_key}") if db is not None else None
 
-            # --- 1. Cache read ---
             if db is not None:
                 cached = _get_cached(db, cache_key)
                 if cached is not None:
@@ -281,156 +235,21 @@ class SAFootballNewsClient:
                     _finish_sync_job(db, sync_job_id, "success")
                     return cached
 
-            # --- 2. Live API call ---
-            params = {
-                **_FIXED_PARAMS,
-                "q": query,
-                "max": max_results,
-            }
-
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{self._base}/{endpoint}", params=params)
-
-            response.raise_for_status()
-            result = GNewsResponse.model_validate(response.json())
-            _write_sync_log(
-                db,
-                sync_job_id,
-                f"GNews returned {len(result.articles)} articles",
-            ) if db is not None else None
-
-            combined_articles: list[dict] = [a.model_dump() for a in result.articles]
-            if self._newsapi_key:
-                try:
-                    other = await self._fetch_newsapi_ai(query, max_results)
-                    combined_articles = _interleave_articles(combined_articles, other)
-                    _write_sync_log(
-                        db,
-                        sync_job_id,
-                        f"NewsAPI.ai returned {len(other)} articles",
-                    ) if db is not None else None
-                except Exception as exc:  # pragma: no cover - defensive
-                    _write_sync_log(
-                        db,
-                        sync_job_id,
-                        f"NewsAPI.ai fetch failed: {exc}",
-                        "warning",
-                    ) if db is not None else None
-                    print(f"Warning: NewsAPI.ai fetch failed: {exc}")
-
-            # Deduplicate by URL while preserving order
-            seen: dict[str, dict] = {}
-            for art in combined_articles:
-                if not _is_sa_football_article(art):
-                    continue
-                url = (art.get("url") or "").strip()
-                title_key = (art.get("title") or "").strip().lower()
-                key = title_key or url.lower()
-                if key and key not in seen:
-                    # Ensure source is a plain dict with name/url
-                    src = art.get("source") or {}
-                    if not isinstance(src, dict):
-                        src = {"name": str(src), "url": ""}
-                    seen[key] = {
-                        "title": art.get("title") or "",
-                        "description": art.get("description"),
-                        "content": art.get("content"),
-                        "url": art.get("url") or "",
-                        "image": art.get("image"),
-                        "publishedAt": art.get("publishedAt") or art.get("published_at") or "",
-                        "source": {"name": src.get("name") or "", "url": src.get("url") or ""},
-                    }
-
-            final_list = list(seen.values())[:max_results]
-            final_response = GNewsResponse.model_validate({"totalArticles": len(final_list), "articles": final_list})
-
-            # --- 3. Cache write ---
             if db is not None:
-                _set_cache(db, cache_key, final_response)
                 _write_sync_log(
                     db,
                     sync_job_id,
-                    f"News sync completed; cached {len(final_response.articles)} articles",
+                    f"News DB read found no rows for {cache_key}",
+                    "warning",
                 )
                 _finish_sync_job(db, sync_job_id, "success")
 
-            return final_response
+            return GNewsResponse.model_validate({"totalArticles": 0, "articles": []})
         except Exception as exc:
             if db is not None:
-                _write_sync_log(db, sync_job_id, f"News sync failed: {exc}", "error")
+                _write_sync_log(db, sync_job_id, f"News DB read failed: {exc}", "error")
                 _finish_sync_job(db, sync_job_id, "failed", str(exc))
             raise
-
-    async def _fetch_newsapi_ai(self, query: str, max_results: int) -> list[dict]:
-        """
-        Fetch articles from NewsAPI.ai and return a list of article dicts compatible
-        with the GNewsArticle schema (title, description, content, url, image, publishedAt, source).
-        This method is defensive: any error results in an empty list.
-        """
-        if not self._newsapi_key:
-            return []
-
-        body = {
-            "action": "getArticles",
-            "keyword": _FOOTBALL_QUERY,
-            "keywordSearchMode": "exact",
-            "articlesSortBy": "date",
-            "articlesSortByAsc": False,
-            "articlesCount": max_results,
-            "articlesPage": 1,
-            "lang": "eng",
-            "sourceLocationUri": "http://en.wikipedia.org/wiki/South_Africa",
-            "dataType": ["news"],
-            "forceMaxDataTimeWindow": 31,
-            "resultType": "articles",
-            "includeArticleImage": True,
-            "includeArticleBody": True,
-            "includeSourceTitle": True,
-            "apiKey": self._newsapi_key,
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(f"{self._newsapi_base}/article/getArticles", json=body)
-            resp.raise_for_status()
-            payload = resp.json()
-            articles_payload = payload.get("articles") if isinstance(payload, dict) else None
-            articles = articles_payload.get("results") if isinstance(articles_payload, dict) else articles_payload
-            if not articles:
-                return []
-
-            normalized: list[dict] = []
-            for item in articles[:max_results]:
-                # Map common fields to GNews shape
-                title = item.get("title") or item.get("headline") or ""
-                description = item.get("description") or item.get("summary") or item.get("body", "")[:300] or None
-                content = item.get("content") or item.get("body") or None
-                url = item.get("url") or item.get("link") or ""
-                image = item.get("image") or item.get("thumbnail") or item.get("imageUrl") or None
-                published = item.get("publishedAt") or item.get("published_at") or item.get("dateTime") or item.get("date") or ""
-                source = item.get("source")
-                if isinstance(source, dict):
-                    source_name = source.get("title") or source.get("name") or "NewsAPI.ai"
-                    source_url = source.get("uri") or source.get("url") or ""
-                else:
-                    source_name = str(source) if source else "NewsAPI.ai"
-                    source_url = ""
-
-                normalized.append(
-                    {
-                        "title": title,
-                        "description": description,
-                        "content": content,
-                        "url": url,
-                        "image": image,
-                        "publishedAt": published,
-                        "source": {"name": source_name, "url": source_url},
-                    }
-                )
-
-            return normalized
-        except Exception:  # pragma: no cover - network/runtime dependent
-            return []
 
     # ------------------------------------------------------------------
     # Public methods — one per news category
