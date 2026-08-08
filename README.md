@@ -1,21 +1,38 @@
-# Touchline Sync Merged Project
+# Touchline
 
-This folder now holds the merged backend and frontend.
+Frontend for the Touchline fantasy football platform.
 
-What is included:
-- Backend API in `app/`
-- Database schema and migrations in `db/`
-- Frontend app in `frontend/`
-- Shared helper scripts and documentation
+## What is in this repo
 
-Main entry points:
-- `app/main.py` for the API
-- `db/touchlinedb.sql` for the full schema
-- `frontend/src/main.tsx` for the UI
-- `frontend/vite.config.ts` for the frontend dev server
+- `frontend/` — the Vite + React + TypeScript web app (Tailwind + shadcn/ui)
+- `frontend/android/` — Capacitor Android wrapper
+- `frontend/netlify/` — Netlify build config and functions
 
-Run notes:
-- Copy `frontend/.env.example` to `frontend/.env` and fill in the frontend values
-- Copy the root `.env.example` to `.env` and fill in backend values
-- Start the backend from the project root
-- Start the frontend from `frontend/`
+## What is *not* in this repo
+
+- **Database schema and migrations** live in the sync worker repo. That repo's
+  `db/migrations/` is the single source of truth — do not keep a second copy here.
+- **The sync worker** (Sportmonks + GNews ingestion into the `football` and `sync`
+  schemas) lives in the sync worker repo.
+- **The user-facing backend** (users, fantasy teams, scoring, leaderboards) lives
+  in the backend repo. The frontend talks to it over HTTP; it never connects to
+  the database directly.
+
+See `BACKEND_INTEGRATION.md` for the shared database contract — schema ownership,
+the Sportmonks id-space join rule, and the event/state codes.
+
+## Running the frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # then fill in the values
+npm run dev
+```
+
+Other scripts: `npm run build`, `npm run preview`, `npm run lint`.
+
+## Configuration
+
+All configuration is in `frontend/.env` — see `frontend/.env.example`.
+`VITE_API_BASE_URL` points at the backend API.
