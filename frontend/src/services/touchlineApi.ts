@@ -191,29 +191,25 @@ export const fetchMatchDetail = (fixtureId: number) =>
 
 export interface ApiArticle {
     title: string;
-    summary: string;
-    description: string;
-    content: string;
     url: string;
-    imageUrl: string;
-    image: string;
-    publishedAt: string;
-    source: { name: string; url: string };
-    tag?: string;
-    tagColor?: string;
+    imageUrl: string | null;
+    publishedAt: string | null;
+    summary: string;
+    /** Publication name, e.g. "SoccerLaduma". */
+    source: string;
 }
 
 export interface ApiNewsResponse {
     totalArticles: number;
     articles: ApiArticle[];
-    /** Which cache table answered, or null when none could be read. */
-    source: string | null;
+    /** When the sync worker last refreshed the cache. */
     fetchedAt?: string | null;
-    /** Set when no cache was reachable — the UI shows an explanatory empty state. */
+    /** Set when the cache could not be read — the UI shows an empty state. */
     unavailable?: boolean;
+    detail?: string;
 }
 
-export const fetchNews = (max = 10) => get<ApiNewsResponse>(`/news/headlines?max=${max}`);
+export const fetchNews = (max = 20) => get<ApiNewsResponse>(`/news/headlines?max=${max}`);
 
 /** Fixture states that mean the result is final — BACKEND_INTEGRATION.md §6. */
 export const FINAL_STATE_IDS = [5, 7, 8];

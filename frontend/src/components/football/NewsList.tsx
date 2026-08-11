@@ -25,8 +25,7 @@ const relativeTime = (iso: string) => {
 
 const ArticleCard = ({ article }: { article: ApiArticle }) => {
     const [imageFailed, setImageFailed] = useState(false);
-    const image = article.imageUrl || article.image;
-    const showImage = image && !imageFailed;
+    const showImage = article.imageUrl && !imageFailed;
 
     return (
         <li>
@@ -38,7 +37,7 @@ const ArticleCard = ({ article }: { article: ApiArticle }) => {
             >
                 {showImage && (
                     <img
-                        src={image}
+                        src={article.imageUrl}
                         alt=""
                         loading="lazy"
                         onError={() => setImageFailed(true)}
@@ -54,7 +53,7 @@ const ArticleCard = ({ article }: { article: ApiArticle }) => {
                         </span>
                     )}
                     <span className="mt-1 block text-xs text-muted-foreground">
-                        {article.source?.name}
+                        {article.source}
                         {article.publishedAt && ` · ${relativeTime(article.publishedAt)}`}
                     </span>
                 </span>
