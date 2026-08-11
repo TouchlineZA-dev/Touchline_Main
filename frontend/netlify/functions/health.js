@@ -47,7 +47,29 @@ export const handler = async () => {
             format: rawKey ? `${rawKey.slice(0, 8)}…` : null,
             length: rawKey.length,
             hadWhitespace: rawKey !== rawKey.trim()
-        }
+        },
+        // Used by the news endpoint, which reads sync.news_cache directly.
+        // Reports shape only — never the password.
+        databaseUrl: (() => {
+            const raw = (process.env.DATABASE_URL || '').trim();
+            if (!raw) return { configured: false };
+
+            try {
+                const parsed = new URL(raw);
+                return {
+                    configured: true,
+                    user: parsed.username || null,
+                    host: parsed.hostname,
+                    // 6543 is the transaction pooler, the right target for
+                    // short serverless requests.
+                    port: parsed.port || null,
+                    database: parsed.pathname.replace(/^\//, '') || null,
+                    hasPassword: Boolean(parsed.password)
+                };
+            } catch {
+                return { configured: true, parseable: false };
+            }
+        })()
     };
 
     const supabase = getSupabaseClient();
