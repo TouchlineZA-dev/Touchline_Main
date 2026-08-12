@@ -33,17 +33,31 @@ const jsonResponse = (statusCode, body) => ({
  */
 let pool;
 const getPool = () => {
-    const connectionString = (process.env.DATABASE_URL || '').trim();
-    if (!connectionString) return null;
+    const raw = (process.env.DATABASE_URL || '').trim();
+    if (!raw) return null;
 
     if (!pool) {
+        // pg merges values parsed from connectionString *over* the config
+        // object, so an `sslmode=require` in the URL replaces the ssl settings
+        // below and re-enables certificate verification. Drop the parameter and
+        // configure TLS explicitly instead.
+        let connectionString = raw;
+        try {
+            const parsed = new URL(raw);
+            parsed.searchParams.delete('sslmode');
+            connectionString = parsed.toString();
+        } catch {
+            // Unparseable — pass it through and let pg report the problem.
+        }
+
         pool = new pg.Pool({
             connectionString,
             max: 2,
             idleTimeoutMillis: 10_000,
             connectionTimeoutMillis: 8_000,
-            // Supabase terminates TLS at the pooler with a cert this client
-            // won't have in its trust store; the connection is still encrypted.
+            // Supabase's pooler presents a certificate that isn't in Node's
+            // trust store. The connection is still encrypted; the chain just
+            // isn't verified. Pinning Supabase's CA would be stricter.
             ssl: { rejectUnauthorized: false }
         });
     }
