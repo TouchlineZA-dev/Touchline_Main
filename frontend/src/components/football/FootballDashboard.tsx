@@ -37,15 +37,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const REFRESH_MS = 60_000;
-const SCREEN_LABELS = {
-    news: 'Home/News',
-    squad: 'My Squad',
-    leagues: 'Leagues',
-    table: 'PSL Table',
-    live: 'Live Games'
-} as const;
-
-type Screen = keyof typeof SCREEN_LABELS;
+type Screen = 'news' | 'squad' | 'leagues' | 'table' | 'live';
 type PlayerPositionFilter = 'All' | 'GK' | 'DEF' | 'MID' | 'ATT';
 
 const NAV_ITEMS: Array<{ key: Screen; label: string; icon: typeof Newspaper }> = [
@@ -868,16 +860,6 @@ export const FootballDashboard = () => {
             />
 
             <main className="mx-auto max-w-[28rem] px-4 py-4">
-                <div className="mb-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                        {SCREEN_LABELS[screen]}
-                    </p>
-                    <h1 className="mt-1 text-2xl font-semibold tracking-tight">Touchline SA</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        {seasonName ? `PSL ${seasonName}` : 'South African football coverage'} · times in SAST
-                    </p>
-                </div>
-
                 {currentScreen()}
             </main>
 
