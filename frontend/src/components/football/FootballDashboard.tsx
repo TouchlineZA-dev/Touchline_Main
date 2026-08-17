@@ -5,7 +5,6 @@ import {
     ChevronDown,
     Loader2,
     Newspaper,
-    RefreshCw,
     Shield,
     ShieldHalf,
     Trophy,
@@ -31,7 +30,6 @@ import {
     fetchPlayers,
     fetchStandings,
     isFinished,
-    isLive,
     sastDate,
     sastDayKey,
     sastTime
@@ -98,7 +96,6 @@ const groupByDay = (fixtures: ApiFixture[]) => {
 };
 
 const getStatusLabel = (fixture: ApiFixture) => {
-    if (isLive(fixture)) return 'LIVE';
     if (isFinished(fixture)) return 'FT';
     return fixture.status;
 };
@@ -219,8 +216,6 @@ const LiveFixtureCard = ({
     fixture: ApiFixture;
     onSelect: (fixture: ApiFixture) => void;
 }) => {
-    const live = isLive(fixture);
-
     return (
         <button
             type="button"
@@ -231,11 +226,9 @@ const LiveFixtureCard = ({
                 <span
                     className={cn(
                         'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                        live
-                            ? 'bg-red-500/10 text-red-600'
-                            : isFinished(fixture)
-                              ? 'bg-muted text-muted-foreground'
-                              : 'bg-emerald-500/10 text-emerald-700'
+                        isFinished(fixture)
+                            ? 'bg-muted text-muted-foreground'
+                            : 'bg-emerald-500/10 text-emerald-700'
                     )}
                 >
                     {getStatusLabel(fixture)}
@@ -253,7 +246,7 @@ const LiveFixtureCard = ({
                 />
                 <div className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     <span>VS</span>
-                    <span>{live ? 'Now' : 'Fixture'}</span>
+                    <span>Fixture</span>
                 </div>
                 <TeamLine
                     crest={fixture.awayCrest}
@@ -444,7 +437,6 @@ const TouchlineHeader = ({
                     <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
                         Touchline SA
                     </p>
-                    <p className="text-[11px] text-muted-foreground">South African football hub</p>
                 </div>
             </div>
 
@@ -562,43 +554,13 @@ export const FootballDashboard = () => {
         };
     }, []);
 
-    const refreshCore = async () => {
-        try {
-            const [fixtureData, standingsData] = await Promise.all([fetchFixtures(), fetchStandings()]);
-            setFixtures(fixtureData.fixtures);
-            setStandings(standingsData.standings);
-            setSeasonName(fixtureData.season?.name ?? standingsData.season?.name ?? null);
-            setCoreError(null);
-            toast('Match data refreshed');
-        } catch (err) {
-            toast.error((err as Error).message || 'Could not refresh match data');
-        }
-    };
-
-    const refreshNews = async () => {
-        setNewsLoading(true);
-        try {
-            const data = await fetchNews(10);
-            setNews(data.articles);
-            setNewsUnavailable(Boolean(data.unavailable));
-            setNewsError(null);
-            toast('News refreshed');
-        } catch (err) {
-            setNewsError((err as Error).message);
-            toast.error((err as Error).message || 'Could not refresh news');
-        } finally {
-            setNewsLoading(false);
-        }
-    };
-
     const sortedFixtures = useMemo(
         () => [...fixtures].sort((a, b) => Date.parse(a.kickoff ?? '') - Date.parse(b.kickoff ?? '')),
         [fixtures]
     );
 
-    const liveFixtures = useMemo(() => sortedFixtures.filter(isLive), [sortedFixtures]);
     const upcomingFixtures = useMemo(
-        () => sortedFixtures.filter((fixture) => !isLive(fixture) && !isFinished(fixture)),
+        () => sortedFixtures.filter((fixture) => !isFinished(fixture)),
         [sortedFixtures]
     );
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
@@ -629,37 +591,20 @@ export const FootballDashboard = () => {
 
     const renderNews = () => (
         <div className="space-y-4">
-            <ShellCard className="overflow-hidden border-emerald-500/20 bg-gradient-to-br from-emerald-500/90 via-primary/90 to-emerald-700/90 text-white">
-                <div className="p-4">
+            <ShellCard className="relative overflow-hidden border-emerald-700/20 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0_8%,transparent_8%_16%),linear-gradient(135deg,#2fbf73,#0f8f4e)] text-white">
+                <div className="pointer-events-none absolute inset-3 rounded-2xl border border-white/25" />
+                <div className="pointer-events-none absolute left-1/2 top-3 h-[calc(100%-1.5rem)] w-px bg-white/20" />
+                <div className="pointer-events-none absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
+                <div className="pointer-events-none absolute -left-4 top-1/2 h-20 w-12 -translate-y-1/2 rounded-r-full border border-l-0 border-white/20" />
+                <div className="pointer-events-none absolute -right-4 top-1/2 h-20 w-12 -translate-y-1/2 rounded-l-full border border-r-0 border-white/20" />
+                <div className="relative p-4">
                     <SectionTitle
                         icon={Newspaper}
-                        title="Live News"
+                        title="News"
                         subtitle="Your daily digest of South African football"
-                        action={
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    className="h-8 gap-1.5 bg-white/15 text-white hover:bg-white/25"
-                                    onClick={() => setScreen('live')}
-                                >
-                                    <Radio className="h-3.5 w-3.5" />
-                                    Live
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    className="h-8 gap-1.5 bg-white/15 text-white hover:bg-white/25"
-                                    onClick={refreshNews}
-                                >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    Refresh
-                                </Button>
-                            </div>
-                        }
                     />
 
-                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {newsCategories.map((tag) => {
                             const active = selectedTag === tag;
                             return (
@@ -757,10 +702,6 @@ export const FootballDashboard = () => {
                         <span>See live games</span>
                         <ArrowRight className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" className="justify-between" onClick={refreshCore}>
-                        <span>Refresh fixtures and table</span>
-                        <RefreshCw className="h-4 w-4" />
-                    </Button>
                 </div>
             </ShellCard>
         </div>
@@ -808,12 +749,6 @@ export const FootballDashboard = () => {
                     icon={ShieldHalf}
                     title="PSL Table"
                     subtitle="League standings are calculated from completed matches only."
-                    action={
-                        <Button size="sm" variant="outline" onClick={refreshCore} className="gap-1.5">
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            Refresh
-                        </Button>
-                    }
                 />
 
                 <div className="mt-4 flex items-center gap-2">
@@ -861,12 +796,6 @@ export const FootballDashboard = () => {
                     icon={Radio}
                     title="Live Games"
                     subtitle="Tap any fixture to open the match detail view."
-                    action={
-                        <Button size="sm" variant="outline" onClick={refreshCore} className="gap-1.5">
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            Refresh
-                        </Button>
-                    }
                 />
             </ShellCard>
 
@@ -874,19 +803,6 @@ export const FootballDashboard = () => {
                 <ShellCard className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                     Could not load live fixtures: {coreError}
                 </ShellCard>
-            )}
-
-            {liveFixtures.length > 0 && (
-                <section className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Live now
-                    </h3>
-                    <div className="space-y-3">
-                        {liveFixtures.map((fixture) => (
-                            <LiveFixtureCard key={fixture.id} fixture={fixture} onSelect={setSelectedFixture} />
-                        ))}
-                    </div>
-                </section>
             )}
 
             <section className="space-y-2">
