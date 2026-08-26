@@ -78,6 +78,47 @@ export interface ApiStanding {
     form: ('W' | 'D' | 'L')[];
 }
 
+export interface ApiCompetitionRef {
+    id: number;
+    sportmonksCompetitionId: number;
+    name: string;
+    shortCode: string | null;
+    active?: boolean;
+}
+
+export interface ApiSeasonRef {
+    id: number;
+    sportmonksSeasonId: number;
+    name: string;
+    isCurrent: boolean;
+    finished?: boolean;
+    pending?: boolean;
+}
+
+export interface ApiPlayerRankingRow {
+    rank: number;
+    playerId: number;
+    sportmonksPlayerId: number;
+    player: string;
+    jerseyNumber: number | null;
+    club: string | null;
+    clubId: number | null;
+    total: number;
+}
+
+export interface ApiPlayerRankingsResponse {
+    competition: ApiCompetitionRef;
+    competitions: ApiCompetitionRef[];
+    season: ApiSeasonRef;
+    seasons: ApiSeasonRef[];
+    matchesCounted: number;
+    rankings: {
+        goals: ApiPlayerRankingRow[];
+        assists: ApiPlayerRankingRow[];
+        cleanSheets: ApiPlayerRankingRow[];
+    };
+}
+
 export interface ApiTeamRef {
     id: number;
     name: string;
@@ -185,6 +226,15 @@ export const fetchStandings = () =>
         computedFrom: string;
         standings: ApiStanding[];
     }>('/standings');
+
+export const fetchPlayerRankings = (params?: { competitionId?: number; seasonId?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.competitionId) query.set('competitionId', String(params.competitionId));
+    if (params?.seasonId) query.set('seasonId', String(params.seasonId));
+
+    const suffix = query.toString();
+    return get<ApiPlayerRankingsResponse>(`/player-rankings${suffix ? `?${suffix}` : ''}`);
+};
 
 export const fetchMatchDetail = (fixtureId: number) =>
     get<ApiMatchDetail>(`/matches?fixtureId=${fixtureId}`);

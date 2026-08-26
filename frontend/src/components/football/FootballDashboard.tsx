@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
     ArrowRight,
+    Award,
+    BarChart3,
     ChevronDown,
     Loader2,
     Newspaper,
@@ -24,7 +26,10 @@ import {
     ApiArticle,
     ApiFixture,
     ApiPlayer,
+    ApiPlayerRankingRow,
+    ApiPlayerRankingsResponse,
     ApiStanding,
+    fetchPlayerRankings,
     fetchFixtures,
     fetchNews,
     fetchPlayers,
@@ -414,6 +419,61 @@ const PlayerPoolDialog = ({
     );
 };
 
+const RankingList = ({
+    title,
+    statLabel,
+    rows,
+    emptyMessage
+}: {
+    title: string;
+    statLabel: string;
+    rows: ApiPlayerRankingRow[];
+    emptyMessage: string;
+}) => (
+    <ShellCard className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+            <div className="flex items-center gap-2">
+                <Award className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">{title}</h3>
+            </div>
+            <span className="text-[11px] font-semibold uppercase text-muted-foreground">Top 10</span>
+        </div>
+
+        {rows.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+        ) : (
+            <ol className="divide-y divide-border/70">
+                {rows.map((row) => (
+                    <li key={`${title}-${row.sportmonksPlayerId}`} className="grid grid-cols-[2.25rem_1fr_auto] items-center gap-3 px-4 py-3">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold tabular-nums text-primary">
+                            {row.rank}
+                        </span>
+                        <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                                {row.jerseyNumber !== null && (
+                                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                                        #{row.jerseyNumber}
+                                    </span>
+                                )}
+                                <p className="truncate text-sm font-semibold">{row.player}</p>
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {row.club ?? 'Club unavailable'}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-lg font-bold tabular-nums">{row.total}</p>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                {statLabel}
+                            </p>
+                        </div>
+                    </li>
+                ))}
+            </ol>
+        )}
+    </ShellCard>
+);
+
 const TouchlineHeader = ({
     onAccount
 }: {
@@ -490,6 +550,11 @@ export const FootballDashboard = () => {
     const [selectedFixture, setSelectedFixture] = useState<ApiFixture | null>(null);
     const [selectedTag, setSelectedTag] = useState<string>('All');
     const [playerPoolOpen, setPlayerPoolOpen] = useState(false);
+    const [rankingsData, setRankingsData] = useState<ApiPlayerRankingsResponse | null>(null);
+    const [rankingsLoading, setRankingsLoading] = useState(true);
+    const [rankingsError, setRankingsError] = useState<string | null>(null);
+    const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>();
+    const [selectedSeasonId, setSelectedSeasonId] = useState<number | undefined>();
 
     useEffect(() => {
         let cancelled = false;
@@ -522,6 +587,37 @@ export const FootballDashboard = () => {
             clearInterval(timer);
         };
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadRankings = async () => {
+            setRankingsLoading(true);
+            setRankingsError(null);
+
+            try {
+                const data = await fetchPlayerRankings({
+                    competitionId: selectedCompetitionId,
+                    seasonId: selectedSeasonId
+                });
+
+                if (cancelled) return;
+
+                setRankingsData(data);
+                setSelectedCompetitionId(data.competition.sportmonksCompetitionId);
+                setSelectedSeasonId(data.season.id);
+            } catch (err) {
+                if (!cancelled) setRankingsError((err as Error).message);
+            } finally {
+                if (!cancelled) setRankingsLoading(false);
+            }
+        };
+
+        loadRankings();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedCompetitionId, selectedSeasonId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -701,36 +797,109 @@ export const FootballDashboard = () => {
 
     const renderLeagues = () => (
         <div className="space-y-4">
-            <PlaceholderPanel
-                title="Leagues"
-                description="Private leagues and invites are not wired up yet. This screen is ready for that workflow once the backend exists."
-                primary={{
-                    label: 'Create league',
-                    onClick: () =>
-                        toast('League creation is not connected yet. Tell me what backend flow you want.')
-                }}
-                secondary={{
-                    label: 'Join league',
-                    onClick: () =>
-                        toast('League joining is not connected yet. I need the invite flow or API details.')
-                }}
-            />
-
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={Trophy}
-                    title="Suggested next step"
-                    subtitle="If you want real league functionality, I need the league rules and backend endpoint."
+                    icon={BarChart3}
+                    title="TOP PLAYER STATISTICS"
+                    subtitle="Rankings from completed matches in the selected competition and season."
                 />
-                <div className="mt-4 flex gap-2">
-                    <Button className="flex-1" variant="outline" onClick={() => setScreen('table')}>
-                        PSL table
-                    </Button>
-                    <Button className="flex-1" variant="outline" onClick={() => setScreen('news')}>
-                        Go to news
-                    </Button>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5">
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                            League
+                        </span>
+                        <div className="relative">
+                            <select
+                                value={selectedCompetitionId ?? ''}
+                                onChange={(event) => {
+                                    const nextCompetitionId = Number(event.target.value);
+                                    setSelectedCompetitionId(nextCompetitionId);
+                                    setSelectedSeasonId(undefined);
+                                }}
+                                className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-sm"
+                                disabled={rankingsLoading && !rankingsData}
+                            >
+                                {rankingsData?.competitions.map((competition) => (
+                                    <option
+                                        key={competition.sportmonksCompetitionId}
+                                        value={competition.sportmonksCompetitionId}
+                                    >
+                                        {competition.shortCode || competition.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                    </label>
+
+                    <label className="space-y-1.5">
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                            Season
+                        </span>
+                        <div className="relative">
+                            <select
+                                value={selectedSeasonId ?? ''}
+                                onChange={(event) => setSelectedSeasonId(Number(event.target.value))}
+                                className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-sm"
+                                disabled={rankingsLoading && !rankingsData}
+                            >
+                                {rankingsData?.seasons.map((season) => (
+                                    <option key={season.id} value={season.id}>
+                                        {season.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                    </label>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                    {rankingsLoading ? (
+                        <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Loading rankings...</span>
+                        </>
+                    ) : (
+                        <span>{rankingsData?.matchesCounted ?? 0} completed matches counted</span>
+                    )}
                 </div>
             </ShellCard>
+
+            {rankingsError && (
+                <ShellCard className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                    Could not load player rankings: {rankingsError}
+                </ShellCard>
+            )}
+
+            {!rankingsError && rankingsLoading && !rankingsData ? (
+                <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading player statistics...
+                </ShellCard>
+            ) : (
+                <div className="grid gap-4">
+                    <RankingList
+                        title="Goals"
+                        statLabel="Goals"
+                        rows={rankingsData?.rankings.goals ?? []}
+                        emptyMessage="No goal scorers are available for this selection."
+                    />
+                    <RankingList
+                        title="Assists"
+                        statLabel="Assists"
+                        rows={rankingsData?.rankings.assists ?? []}
+                        emptyMessage="No player-level assists are available for this selection."
+                    />
+                    <RankingList
+                        title="Clean Sheets"
+                        statLabel="Clean Sheets"
+                        rows={rankingsData?.rankings.cleanSheets ?? []}
+                        emptyMessage="No clean sheets are available for this selection."
+                    />
+                </div>
+            )}
         </div>
     );
 
