@@ -5,6 +5,8 @@ import {
     Award,
     BarChart3,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Loader2,
     Newspaper,
     Shield,
@@ -89,6 +91,83 @@ const groupByDay = (fixtures: ApiFixture[]) => {
     }
 
     return [...groups.entries()];
+};
+
+type FixtureGameweek = {
+    key: string;
+    label: string;
+    dateRange: string;
+    fixtures: ApiFixture[];
+};
+
+const sastDateParts = (utcIso: string | null) => {
+    if (!utcIso) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Johannesburg',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date(utcIso));
+
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    const day = Number(parts.find((part) => part.type === 'day')?.value);
+
+    if (!year || !month || !day) return null;
+    return { year, month, day };
+};
+
+const mondayWeekKey = (utcIso: string | null) => {
+    const parts = sastDateParts(utcIso);
+    if (!parts) return 'unknown';
+
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    const day = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() - day + 1);
+
+    return date.toISOString().slice(0, 10);
+};
+
+const formatGameweekRange = (fixtures: ApiFixture[]) => {
+    const datedFixtures = fixtures.filter((fixture) => fixture.kickoff);
+    const first = datedFixtures[0]?.kickoff ?? null;
+    const last = datedFixtures[datedFixtures.length - 1]?.kickoff ?? first;
+
+    if (!first) return 'Dates TBD';
+    if (sastDayKey(first) === sastDayKey(last)) return sastDate(first);
+    return `${sastDate(first)} - ${sastDate(last)}`;
+};
+
+const buildGameweeks = (fixtures: ApiFixture[]): FixtureGameweek[] => {
+    const groups = new Map<string, ApiFixture[]>();
+
+    for (const fixture of fixtures) {
+        const key = mondayWeekKey(fixture.kickoff);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)?.push(fixture);
+    }
+
+    return [...groups.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, group], index) => ({
+            key,
+            label: key === 'unknown' ? 'Gameweek TBD' : `Gameweek ${index + 1}`,
+            dateRange: formatGameweekRange(group),
+            fixtures: group
+        }));
+};
+
+const currentGameweekIndex = (gameweeks: FixtureGameweek[]) => {
+    if (!gameweeks.length) return 0;
+
+    const todayKey = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'Africa/Johannesburg'
+    });
+    const currentOrNext = gameweeks.findIndex((gameweek) =>
+        gameweek.fixtures.some((fixture) => sastDayKey(fixture.kickoff) >= todayKey)
+    );
+
+    return currentOrNext >= 0 ? currentOrNext : gameweeks.length - 1;
 };
 
 const getStatusLabel = (fixture: ApiFixture) => {
@@ -212,6 +291,8 @@ const LiveFixtureCard = ({
     fixture: ApiFixture;
     onSelect: (fixture: ApiFixture) => void;
 }) => {
+    const scorers = fixture.scorers ?? [];
+
     return (
         <button
             type="button"
@@ -250,6 +331,37 @@ const LiveFixtureCard = ({
                     score={fixture.awayScore}
                     align="right"
                 />
+            </div>
+            <div className="mt-3 border-t border-border/60 pt-2">
+                {scorers.length > 0 ? (
+                    <div className="space-y-1">
+                        {scorers.map((scorer, index) => (
+                            <p
+                                key={`${fixture.id}-${scorer.player ?? 'unknown'}-${scorer.minute ?? index}-${index}`}
+                                className={cn(
+                                    'text-[11px] leading-5 text-muted-foreground',
+                                    scorer.side === 'away' && 'text-right'
+                                )}
+                            >
+                                <span className="font-semibold text-foreground">
+                                    {scorer.player ?? 'Unknown scorer'}
+                                </span>
+                                {scorer.minute !== null && (
+                                    <span>
+                                        {' '}
+                                        {scorer.minute}
+                                        {scorer.extraMinute ? `+${scorer.extraMinute}` : ''}'
+                                    </span>
+                                )}
+                                {scorer.type !== 'Goal' && <span> · {scorer.type}</span>}
+                            </p>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                        {isFinished(fixture) ? 'No scorers recorded.' : 'Scorers will appear after goals are recorded.'}
+                    </p>
+                )}
             </div>
         </button>
     );
@@ -342,7 +454,7 @@ const PlayerPoolDialog = ({
                     <DialogHeader>
                         <DialogTitle className="text-left">Player pool</DialogTitle>
                         <DialogDescription className="text-left">
-                            Browse the live PSL player list. Squad selection is not connected yet.
+                            Browse the current PSL player list. Squad selection is coming soon.
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -554,6 +666,8 @@ export const FootballDashboard = () => {
     const [rankingsError, setRankingsError] = useState<string | null>(null);
     const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>();
     const [selectedSeasonId, setSelectedSeasonId] = useState<number | undefined>();
+    const [selectedGameweekIndex, setSelectedGameweekIndex] = useState(-1);
+    const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -651,6 +765,22 @@ export const FootballDashboard = () => {
         [sortedFixtures]
     );
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
+    const fixtureGameweeks = useMemo(() => buildGameweeks(sortedFixtures), [sortedFixtures]);
+    const selectedGameweek = fixtureGameweeks[selectedGameweekIndex] ?? fixtureGameweeks[0] ?? null;
+    const canGoOlder = selectedGameweekIndex > 0;
+    const canGoNewer = selectedGameweekIndex >= 0 && selectedGameweekIndex < fixtureGameweeks.length - 1;
+
+    useEffect(() => {
+        if (!fixtureGameweeks.length) {
+            setSelectedGameweekIndex(-1);
+            return;
+        }
+
+        setSelectedGameweekIndex((current) => {
+            if (current >= 0 && current < fixtureGameweeks.length) return current;
+            return currentGameweekIndex(fixtureGameweeks);
+        });
+    }, [fixtureGameweeks]);
 
     const newsCategories = useMemo(() => {
         const tags = new Set<string>();
@@ -766,8 +896,8 @@ export const FootballDashboard = () => {
     const renderSquad = () => (
         <div className="space-y-4">
             <PlaceholderPanel
-                title="My Squad"
-                description="Squad management is not connected yet, but the player pool is live so you can start exploring current PSL options."
+                title="My Squad Coming Soon"
+                description="Squad management is coming soon. For now, you can keep exploring players, fixtures, and the PSL table without getting stuck."
                 primary={{
                     label: 'Browse player pool',
                     onClick: () => setPlayerPoolOpen(true)
@@ -796,6 +926,19 @@ export const FootballDashboard = () => {
 
     const renderLeagues = () => (
         <div className="space-y-4">
+            <PlaceholderPanel
+                title="Leagues Coming Soon"
+                description="Private leagues, invites, and league tables are coming soon. Use the buttons below to jump back into the working football sections."
+                primary={{
+                    label: 'Open PSL table',
+                    onClick: () => setScreen('table')
+                }}
+                secondary={{
+                    label: 'Go to news',
+                    onClick: () => setScreen('news')
+                }}
+            />
+
             <ShellCard className="p-4">
                 <SectionTitle
                     icon={BarChart3}
@@ -955,7 +1098,7 @@ export const FootballDashboard = () => {
                 <SectionTitle
                     icon={Radio}
                     title="Live Games"
-                    subtitle="Tap any fixture to open the match detail view."
+                    subtitle="Swipe left for older gameweeks and right for newer fixtures."
                 />
             </ShellCard>
 
@@ -965,39 +1108,114 @@ export const FootballDashboard = () => {
                 </ShellCard>
             )}
 
-            <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Upcoming and recent
-                </h3>
+            <section
+                className="space-y-3"
+                onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)}
+                onTouchEnd={(event) => {
+                    if (touchStartX === null) return;
+                    const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+                    const delta = endX - touchStartX;
+                    setTouchStartX(null);
 
+                    if (Math.abs(delta) < 48) return;
+                    setSelectedGameweekIndex((current) => {
+                        if (delta < 0) return Math.max(0, current - 1);
+                        return Math.min(fixtureGameweeks.length - 1, current + 1);
+                    });
+                }}
+            >
                 {coreLoading && sortedFixtures.length === 0 ? (
                     <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading fixtures…
                     </ShellCard>
-                ) : upcomingFixtures.length === 0 && finishedFixtures.length === 0 ? (
+                ) : !selectedGameweek ? (
                     <ShellCard className="p-5 text-center text-sm text-muted-foreground">
                         No fixtures available right now.
                     </ShellCard>
                 ) : (
-                    <div className="space-y-4">
-                        {[...groupByDay(upcomingFixtures), ...groupByDay(finishedFixtures)].map(([day, dayFixtures]) => (
-                            <div key={day} className="space-y-2">
-                                <div className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                                    {sastDate(dayFixtures[0].kickoff)}
+                    <>
+                        <ShellCard className="p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    disabled={!canGoOlder}
+                                    aria-label="Previous gameweek"
+                                    onClick={() => setSelectedGameweekIndex((current) => Math.max(0, current - 1))}
+                                    className="h-9 w-9 rounded-full"
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+
+                                <div className="min-w-0 text-center">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                        {selectedGameweek.label}
+                                    </p>
+                                    <h3 className="mt-1 text-lg font-semibold tracking-tight">
+                                        {selectedGameweek.dateRange}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {selectedGameweek.fixtures.length}{' '}
+                                        {selectedGameweek.fixtures.length === 1 ? 'match' : 'matches'}
+                                    </p>
                                 </div>
-                                <div className="space-y-3">
-                                    {dayFixtures.map((fixture) => (
-                                        <LiveFixtureCard
-                                            key={fixture.id}
-                                            fixture={fixture}
-                                            onSelect={setSelectedFixture}
-                                        />
-                                    ))}
-                                </div>
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    disabled={!canGoNewer}
+                                    aria-label="Next gameweek"
+                                    onClick={() =>
+                                        setSelectedGameweekIndex((current) =>
+                                            Math.min(fixtureGameweeks.length - 1, current + 1)
+                                        )
+                                    }
+                                    className="h-9 w-9 rounded-full"
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
                             </div>
-                        ))}
-                    </div>
+
+                            <div className="mt-4 flex justify-center gap-1.5">
+                                {fixtureGameweeks.map((gameweek, index) => (
+                                    <button
+                                        key={gameweek.key}
+                                        type="button"
+                                        aria-label={`Open ${gameweek.label}`}
+                                        onClick={() => setSelectedGameweekIndex(index)}
+                                        className={cn(
+                                            'h-1.5 rounded-full transition-all',
+                                            index === selectedGameweekIndex
+                                                ? 'w-6 bg-primary'
+                                                : 'w-1.5 bg-muted-foreground/30'
+                                        )}
+                                    />
+                                ))}
+                            </div>
+                        </ShellCard>
+
+                        <div className="space-y-4">
+                            {groupByDay(selectedGameweek.fixtures).map(([day, dayFixtures]) => (
+                                <div key={day} className="space-y-2">
+                                    <div className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                                        {sastDate(dayFixtures[0].kickoff)}
+                                    </div>
+                                    <div className="space-y-3">
+                                        {dayFixtures.map((fixture) => (
+                                            <LiveFixtureCard
+                                                key={fixture.id}
+                                                fixture={fixture}
+                                                onSelect={setSelectedFixture}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
                 )}
             </section>
         </div>

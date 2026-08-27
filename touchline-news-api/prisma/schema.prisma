@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  API
+  RSS
+  LICENSED
+  OTHER
+}
+
+model Article {
+  id              String        @id @default(cuid())
+  title           String
+  normalizedTitle String
+  summary         String?
+  source          String
+  sourceId        String?
+  publishedAt     DateTime
+  url             String        @unique
+  imageUrl        String?
+  category        String
+  isTest          Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  teams           ArticleTeam[]
+
+  @@index([publishedAt])
+  @@index([category])
+  @@index([source])
+  @@index([normalizedTitle])
+  @@unique([source, sourceId])
+}
+
+model Source {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  website   String?
+  type      SourceType
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+}
+
+model Team {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  shortName String?
+  slug      String        @unique
+  logoUrl   String?
+  aliases   String[]      @default([])
+  createdAt DateTime      @default(now())
+  articles  ArticleTeam[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model ArticleTeam {
+  articleId String
+  teamId    String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, teamId])
+}
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  provider   String
+  found      Int      @default(0)
+  inserted   Int      @default(0)
+  duplicates Int      @default(0)
+  invalid    Int      @default(0)
+  failed     Int      @default(0)
+  message    String?
+  createdAt  DateTime @default(now())
+}

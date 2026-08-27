@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: touchline_news
+      POSTGRES_USER: touchline
+      POSTGRES_PASSWORD: touchline
+    ports:
+      - "5432:5432"
+    volumes:
+      - touchline-news-data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    depends_on:
+      - postgres
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://touchline:touchline@postgres:5432/touchline_news?schema=public
+      CORS_ORIGIN: http://localhost:8080
+      NEWS_SYNC_ENABLED: "false"
+    ports:
+      - "3000:3000"
+    command: sh -c "npx prisma migrate deploy && node dist/src/server.js"
+
+volumes:
+  touchline-news-data:

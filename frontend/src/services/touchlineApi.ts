@@ -58,6 +58,16 @@ export interface ApiFixture {
     kickoff: string | null;
     stateId: number | null;
     status: FixtureStatus;
+    scorers?: ApiFixtureScorer[];
+}
+
+export interface ApiFixtureScorer {
+    minute: number | null;
+    extraMinute: number | null;
+    player: string | null;
+    teamId: number | null;
+    side: 'home' | 'away' | null;
+    type: 'Goal' | 'Own goal' | 'Penalty scored';
 }
 
 export interface ApiStanding {
