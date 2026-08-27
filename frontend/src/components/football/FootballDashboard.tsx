@@ -53,7 +53,6 @@ const NAV_ITEMS: Array<{ key: Screen; label: string; icon: typeof Newspaper }> =
     { key: 'live', label: 'Live Games', icon: Radio }
 ];
 
-const TAG_FALLBACKS = ['All', 'Breaking', 'Transfers', 'PSL Giants', 'National Team', 'Management'];
 const PLAYER_FILTERS: PlayerPositionFilter[] = ['All', 'GK', 'DEF', 'MID', 'ATT'];
 
 const isNonEmptyString = (value: string | null | undefined): value is string =>
@@ -158,8 +157,8 @@ const TeamLine = ({
 );
 
 const NewsCard = ({ article }: { article: ApiArticle }) => {
-    const image = article.imageUrl || article.image;
-    const tag = article.tag || 'General';
+    const image = article.imageUrl;
+    const tag = article.tag || article.source || 'News';
 
     return (
         <a
@@ -188,7 +187,7 @@ const NewsCard = ({ article }: { article: ApiArticle }) => {
             )}
             <div className="space-y-2 p-4">
                 <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                    <span>{article.source?.name ?? 'Touchline News'}</span>
+                    <span>{article.source ?? 'Touchline News'}</span>
                     <span>{article.publishedAt ? formatRelativeTime(article.publishedAt) : ''}</span>
                 </div>
                 <h3 className="line-clamp-2 text-sm font-semibold leading-snug">{article.title}</h3>
@@ -660,7 +659,7 @@ export const FootballDashboard = () => {
         }
 
         const values = [...tags].sort((a, b) => a.localeCompare(b));
-        return values.length ? ['All', ...values] : TAG_FALLBACKS;
+        return ['All', ...values];
     }, [news]);
 
     useEffect(() => {

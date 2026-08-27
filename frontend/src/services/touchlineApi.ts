@@ -247,6 +247,7 @@ export interface ApiArticle {
     summary: string;
     /** Publication name, e.g. "SoccerLaduma". */
     source: string;
+    tag?: string;
 }
 
 export interface ApiNewsResponse {
