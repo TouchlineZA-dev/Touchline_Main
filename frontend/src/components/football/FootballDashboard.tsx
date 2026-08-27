@@ -5,8 +5,6 @@ import {
     Award,
     BarChart3,
     ChevronDown,
-    ChevronLeft,
-    ChevronRight,
     Loader2,
     Newspaper,
     Shield,
@@ -767,8 +765,6 @@ export const FootballDashboard = () => {
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
     const fixtureGameweeks = useMemo(() => buildGameweeks(sortedFixtures), [sortedFixtures]);
     const selectedGameweek = fixtureGameweeks[selectedGameweekIndex] ?? fixtureGameweeks[0] ?? null;
-    const canGoOlder = selectedGameweekIndex > 0;
-    const canGoNewer = selectedGameweekIndex >= 0 && selectedGameweekIndex < fixtureGameweeks.length - 1;
 
     useEffect(() => {
         if (!fixtureGameweeks.length) {
@@ -805,6 +801,12 @@ export const FootballDashboard = () => {
 
     const featuredNews = filteredNews[0] ?? null;
     const restNews = filteredNews.slice(1);
+    const changeScreen = (nextScreen: Screen) => {
+        if (nextScreen === 'live' && fixtureGameweeks.length > 0) {
+            setSelectedGameweekIndex(currentGameweekIndex(fixtureGameweeks));
+        }
+        setScreen(nextScreen);
+    };
 
     const renderNews = () => (
         <div className="space-y-4">
@@ -1094,14 +1096,6 @@ export const FootballDashboard = () => {
 
     const renderLive = () => (
         <div className="space-y-4">
-            <ShellCard className="p-4">
-                <SectionTitle
-                    icon={Radio}
-                    title="Live Games"
-                    subtitle="Swipe right for older gameweeks and left for newer fixtures."
-                />
-            </ShellCard>
-
             {coreError && (
                 <ShellCard className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                     Could not load live fixtures: {coreError}
@@ -1136,80 +1130,19 @@ export const FootballDashboard = () => {
                 ) : (
                     <>
                         <ShellCard className="p-4">
-                            <div className="flex items-center justify-between gap-3">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    disabled={!canGoOlder}
-                                    aria-label="Previous gameweek"
-                                    onClick={() => setSelectedGameweekIndex((current) => Math.max(0, current - 1))}
-                                    className="h-9 w-9 rounded-full"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-
-                                <div className="min-w-0 text-center">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
-                                        {selectedGameweek.label}
-                                    </p>
-                                    <h3 className="mt-1 text-lg font-semibold tracking-tight">
-                                        {selectedGameweek.dateRange}
-                                    </h3>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                        {selectedGameweek.fixtures.length}{' '}
-                                        {selectedGameweek.fixtures.length === 1 ? 'match' : 'matches'}
-                                    </p>
-                                </div>
-
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    disabled={!canGoNewer}
-                                    aria-label="Next gameweek"
-                                    onClick={() =>
-                                        setSelectedGameweekIndex((current) =>
-                                            Math.min(fixtureGameweeks.length - 1, current + 1)
-                                        )
-                                    }
-                                    className="h-9 w-9 rounded-full"
-                                >
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
+                            <div className="text-center">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                    {selectedGameweek.label}
+                                </p>
                             </div>
 
-                            <div className="mt-4 flex justify-center gap-1.5">
-                                {fixtureGameweeks.map((gameweek, index) => (
-                                    <button
-                                        key={gameweek.key}
-                                        type="button"
-                                        aria-label={`Open ${gameweek.label}`}
-                                        onClick={() => setSelectedGameweekIndex(index)}
-                                        className={cn(
-                                            'h-1.5 rounded-full transition-all',
-                                            index === selectedGameweekIndex
-                                                ? 'w-6 bg-primary'
-                                                : 'w-1.5 bg-muted-foreground/30'
-                                        )}
-                                    />
-                                ))}
-                            </div>
-
-                            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-                                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    <ChevronLeft className="h-3.5 w-3.5 animate-pulse text-primary" />
-                                    <span>Newer</span>
-                                </div>
-                                <div className="relative h-6 w-16 overflow-hidden rounded-full bg-white shadow-inner">
-                                    <span className="absolute left-2 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/50" />
-                                    <span className="absolute left-6 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/40 [animation-delay:250ms]" />
-                                    <span className="absolute left-10 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/30 [animation-delay:500ms]" />
-                                </div>
-                                <div className="flex items-center justify-end gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                    <span>Older</span>
-                                    <ChevronRight className="h-3.5 w-3.5 animate-pulse text-primary" />
-                                </div>
+                            <div
+                                className="mx-auto mt-4 flex h-8 w-24 items-center justify-center overflow-hidden rounded-full bg-emerald-500/5 shadow-inner"
+                                aria-label="Swipe between gameweeks"
+                            >
+                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/50" />
+                                <span className="mx-2 h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/40 [animation-delay:250ms]" />
+                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/30 [animation-delay:500ms]" />
                             </div>
                         </ShellCard>
 
@@ -1265,7 +1198,7 @@ export const FootballDashboard = () => {
                 {currentScreen()}
             </main>
 
-            <BottomNav screen={screen} onChange={setScreen} />
+            <BottomNav screen={screen} onChange={changeScreen} />
             <MatchDetail fixture={selectedFixture} onClose={() => setSelectedFixture(null)} />
             <PlayerPoolDialog open={playerPoolOpen} onOpenChange={setPlayerPoolOpen} />
         </div>
