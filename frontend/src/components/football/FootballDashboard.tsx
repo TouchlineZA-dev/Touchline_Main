@@ -1098,7 +1098,7 @@ export const FootballDashboard = () => {
                 <SectionTitle
                     icon={Radio}
                     title="Live Games"
-                    subtitle="Swipe left for older gameweeks and right for newer fixtures."
+                    subtitle="Swipe right for older gameweeks and left for newer fixtures."
                 />
             </ShellCard>
 
@@ -1119,7 +1119,7 @@ export const FootballDashboard = () => {
 
                     if (Math.abs(delta) < 48) return;
                     setSelectedGameweekIndex((current) => {
-                        if (delta < 0) return Math.max(0, current - 1);
+                        if (delta > 0) return Math.max(0, current - 1);
                         return Math.min(fixtureGameweeks.length - 1, current + 1);
                     });
                 }}
@@ -1194,6 +1194,22 @@ export const FootballDashboard = () => {
                                         )}
                                     />
                                 ))}
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    <ChevronLeft className="h-3.5 w-3.5 animate-pulse text-primary" />
+                                    <span>Newer</span>
+                                </div>
+                                <div className="relative h-6 w-16 overflow-hidden rounded-full bg-white shadow-inner">
+                                    <span className="absolute left-2 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/50" />
+                                    <span className="absolute left-6 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/40 [animation-delay:250ms]" />
+                                    <span className="absolute left-10 top-1/2 h-2 w-2 -translate-y-1/2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/30 [animation-delay:500ms]" />
+                                </div>
+                                <div className="flex items-center justify-end gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    <span>Older</span>
+                                    <ChevronRight className="h-3.5 w-3.5 animate-pulse text-primary" />
+                                </div>
                             </div>
                         </ShellCard>
 
