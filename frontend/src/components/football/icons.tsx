@@ -13,8 +13,10 @@
  */
 import {
     Article,
+    ArrowDown,
     ArrowRight,
     ArrowsLeftRight,
+    ArrowUp,
     Broadcast,
     CalendarBlank,
     CaretDown,
@@ -43,8 +45,10 @@ import {
 
 export {
     Article,
+    ArrowDown,
     ArrowRight,
     ArrowsLeftRight,
+    ArrowUp,
     Broadcast,
     CalendarBlank,
     CaretDown,
