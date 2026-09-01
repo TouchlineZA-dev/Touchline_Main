@@ -15,21 +15,44 @@ import {
     toSast
 } from '@/services/touchlineApi';
 import { TeamCrest } from './TeamCrest';
+import {
+    ArrowsLeftRight,
+    CardMark,
+    ICON,
+    SoccerBall,
+    WarningCircle,
+    XCircle
+} from './icons';
 
 interface MatchDetailProps {
     fixture: ApiFixture | null;
     onClose: () => void;
 }
 
-const EVENT_ICONS: Record<number, string> = {
-    14: '⚽',
-    15: '⚽',
-    16: '⚽',
-    17: '✖',
-    18: '🔄',
-    19: '🟨',
-    20: '🟥',
-    21: '🟥'
+/**
+ * Event glyphs per the icon kit. Own goals reuse the ball but are tinted red,
+ * since the kit has no distinct own-goal icon and the label carries the detail.
+ */
+const EventIcon = ({ typeId }: { typeId: number }) => {
+    switch (typeId) {
+        case 14: // goal
+        case 16: // penalty scored
+            return <SoccerBall size={ICON.inline} weight="fill" />;
+        case 15: // own goal
+            return <SoccerBall size={ICON.inline} weight="fill" className="text-red-600" />;
+        case 17: // penalty missed
+            return <XCircle size={ICON.inline} className="text-muted-foreground" />;
+        case 18: // substitution
+            return <ArrowsLeftRight size={ICON.inline} className="text-muted-foreground" />;
+        case 19:
+            return <CardMark colour="yellow" />;
+        case 20:
+            return <CardMark colour="red" />;
+        case 21: // second yellow
+            return <CardMark colour="red" second />;
+        default:
+            return <WarningCircle size={ICON.inline} className="text-muted-foreground" />;
+    }
 };
 
 const minuteLabel = (minute: number | null, extra: number | null) => {
@@ -56,8 +79,8 @@ const Timeline = ({ detail }: { detail: ApiMatchDetail }) => {
                     <span className="w-12 shrink-0 tabular-nums text-muted-foreground">
                         {minuteLabel(event.minute, event.extraMinute)}
                     </span>
-                    <span className="w-6 shrink-0 text-center" aria-hidden="true">
-                        {EVENT_ICONS[event.typeId] ?? '•'}
+                    <span className="flex w-6 shrink-0 justify-center">
+                        <EventIcon typeId={event.typeId} />
                     </span>
                     <span className="min-w-0 flex-1">
                         <span className="font-medium">{event.player ?? 'Unknown player'}</span>
