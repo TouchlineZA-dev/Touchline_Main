@@ -361,18 +361,12 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                             <Timeline detail={detail} />
                         </TabsContent>
 
-                        <TabsContent value="lineups" className="mt-4 space-y-6">
+                        <TabsContent value="lineups" className="mt-4">
                             <Pitch
-                                team={detail.fixture.homeTeam}
-                                starting={detail.lineups.home.starting}
-                                bench={detail.lineups.home.bench}
-                                events={detail.events.filter((e) => e.side === 'home')}
-                            />
-                            <Pitch
-                                team={detail.fixture.awayTeam}
-                                starting={detail.lineups.away.starting}
-                                bench={detail.lineups.away.bench}
-                                events={detail.events.filter((e) => e.side === 'away')}
+                                homeTeam={detail.fixture.homeTeam}
+                                awayTeam={detail.fixture.awayTeam}
+                                lineups={detail.lineups}
+                                events={detail.events}
                             />
                         </TabsContent>
 
