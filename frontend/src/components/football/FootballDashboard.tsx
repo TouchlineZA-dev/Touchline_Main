@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
     ArrowRight,
-    Award,
-    BarChart3,
-    ChevronDown,
-    Loader2,
+    Broadcast,
+    CaretDown,
+    ChartBar,
+    CircleNotch,
+    Medal,
     Newspaper,
     Shield,
-    ShieldHalf,
     Trophy,
-    UserCircle2,
-    Users,
-    Radio
-} from 'lucide-react';
+    UserCircle,
+    Users
+} from './icons';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -49,8 +48,8 @@ const NAV_ITEMS: Array<{ key: Screen; label: string; icon: typeof Newspaper }> =
     { key: 'news', label: 'News', icon: Newspaper },
     { key: 'squad', label: 'My Squad', icon: Users },
     { key: 'leagues', label: 'Leagues', icon: Trophy },
-    { key: 'table', label: 'PSL Table', icon: ShieldHalf },
-    { key: 'live', label: 'Live Games', icon: Radio }
+    { key: 'table', label: 'PSL Table', icon: Shield },
+    { key: 'live', label: 'Live Games', icon: Broadcast }
 ];
 
 const PLAYER_FILTERS: PlayerPositionFilter[] = ['All', 'GK', 'DEF', 'MID', 'ATT'];
@@ -481,7 +480,7 @@ const PlayerPoolDialog = ({
 
                     {loading && (
                         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <CircleNotch className="h-4 w-4 animate-spin" />
                             Loading players…
                         </div>
                     )}
@@ -542,7 +541,7 @@ const RankingList = ({
     <ShellCard className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
             <div className="flex items-center gap-2">
-                <Award className="h-4 w-4 text-primary" />
+                <Medal className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold">{title}</h3>
             </div>
             <span className="text-[11px] font-semibold uppercase text-muted-foreground">Top 10</span>
@@ -602,7 +601,7 @@ const TouchlineHeader = ({
             </div>
 
             <Button variant="ghost" size="icon" onClick={onAccount} aria-label="Account">
-                <UserCircle2 className="h-5 w-5" />
+                <UserCircle className="h-5 w-5" />
             </Button>
         </div>
     </header>
@@ -848,7 +847,7 @@ export const FootballDashboard = () => {
 
             {newsLoading ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <CircleNotch className="h-4 w-4 animate-spin" />
                     Loading news…
                 </div>
             ) : newsError ? (
@@ -943,7 +942,7 @@ export const FootballDashboard = () => {
 
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={BarChart3}
+                    icon={ChartBar}
                     title="TOP PLAYER STATISTICS"
                     subtitle="Rankings from completed matches in the selected competition and season."
                 />
@@ -973,7 +972,7 @@ export const FootballDashboard = () => {
                                     </option>
                                 ))}
                             </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         </div>
                     </label>
 
@@ -994,7 +993,7 @@ export const FootballDashboard = () => {
                                     </option>
                                 ))}
                             </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         </div>
                     </label>
                 </div>
@@ -1002,7 +1001,7 @@ export const FootballDashboard = () => {
                 <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                     {rankingsLoading ? (
                         <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <CircleNotch className="h-3.5 w-3.5 animate-spin" />
                             <span>Loading rankings...</span>
                         </>
                     ) : (
@@ -1019,7 +1018,7 @@ export const FootballDashboard = () => {
 
             {!rankingsError && rankingsLoading && !rankingsData ? (
                 <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <CircleNotch className="h-4 w-4 animate-spin" />
                     Loading player statistics...
                 </ShellCard>
             ) : (
@@ -1051,7 +1050,7 @@ export const FootballDashboard = () => {
         <div className="space-y-4">
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={ShieldHalf}
+                    icon={Shield}
                     title="PSL Table"
                     subtitle="League standings are calculated from completed matches only."
                 />
@@ -1065,7 +1064,7 @@ export const FootballDashboard = () => {
                         >
                             <option value={seasonName ?? ''}>{seasonName ?? 'Current season'}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <CaretDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     </div>
                     <span className="text-xs text-muted-foreground">
                         {coreLoading ? 'Updating table…' : `${standings.length} teams`}
@@ -1082,7 +1081,7 @@ export const FootballDashboard = () => {
             <ShellCard className="overflow-hidden">
                 {coreLoading && standings.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading table…
                     </div>
                 ) : (
@@ -1120,7 +1119,7 @@ export const FootballDashboard = () => {
             >
                 {coreLoading && sortedFixtures.length === 0 ? (
                     <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading fixtures…
                     </ShellCard>
                 ) : !selectedGameweek ? (
