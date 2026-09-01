@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { Warning } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <Card className="w-full max-w-md border-red-200 shadow-lg">
                         <CardHeader className="text-center">
                             <div className="mx-auto bg-red-100 p-3 rounded-full w-fit mb-4">
-                                <AlertTriangle className="h-8 w-8 text-red-600" />
+                                <Warning className="h-8 w-8 text-red-600" />
                             </div>
                             <CardTitle className="text-xl text-red-700">Something went wrong</CardTitle>
                             <CardDescription>

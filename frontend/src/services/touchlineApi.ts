@@ -147,6 +147,9 @@ export interface ApiMatchEvent {
     player: string | null;
     /** Second player: substitution partner, or possible assist (unreliable). */
     relatedPlayer: string | null;
+    /** Sportmonks ids, for pinning events to lineup entries. */
+    sportmonksPlayerId: number | null;
+    relatedSportmonksPlayerId: number | null;
     result: string | null;
 }
 
@@ -188,6 +191,8 @@ export interface ApiMatchDetail {
         away: { starting: ApiLineupPlayer[]; bench: ApiLineupPlayer[] };
     };
     statistics: ApiTeamStat[];
+    /** Provider stat codes we have no name for; withheld from `statistics`. */
+    unlabelledStatTypes?: number[];
     /** Always true on this data plan — never present these as per-player. */
     statisticsAreTeamLevel: boolean;
 }

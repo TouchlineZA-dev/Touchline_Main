@@ -2,18 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
     ArrowRight,
-    Award,
-    BarChart3,
-    ChevronDown,
-    Loader2,
+    Broadcast,
+    CaretDown,
+    CaretLeft,
+    CaretRight,
+    ChartBar,
+    CircleNotch,
+    ICON,
+    Medal,
     Newspaper,
     Shield,
-    ShieldHalf,
     Trophy,
-    UserCircle2,
-    Users,
-    Radio
-} from 'lucide-react';
+    UserCircle,
+    Users
+} from './icons';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -49,8 +51,8 @@ const NAV_ITEMS: Array<{ key: Screen; label: string; icon: typeof Newspaper }> =
     { key: 'news', label: 'News', icon: Newspaper },
     { key: 'squad', label: 'My Squad', icon: Users },
     { key: 'leagues', label: 'Leagues', icon: Trophy },
-    { key: 'table', label: 'PSL Table', icon: ShieldHalf },
-    { key: 'live', label: 'Live Games', icon: Radio }
+    { key: 'table', label: 'PSL Table', icon: Shield },
+    { key: 'live', label: 'Live Games', icon: Broadcast }
 ];
 
 const PLAYER_FILTERS: PlayerPositionFilter[] = ['All', 'GK', 'DEF', 'MID', 'ATT'];
@@ -481,7 +483,7 @@ const PlayerPoolDialog = ({
 
                     {loading && (
                         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <CircleNotch className="h-4 w-4 animate-spin" />
                             Loading players…
                         </div>
                     )}
@@ -542,7 +544,7 @@ const RankingList = ({
     <ShellCard className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
             <div className="flex items-center gap-2">
-                <Award className="h-4 w-4 text-primary" />
+                <Medal className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold">{title}</h3>
             </div>
             <span className="text-[11px] font-semibold uppercase text-muted-foreground">Top 10</span>
@@ -602,7 +604,7 @@ const TouchlineHeader = ({
             </div>
 
             <Button variant="ghost" size="icon" onClick={onAccount} aria-label="Account">
-                <UserCircle2 className="h-5 w-5" />
+                <UserCircle className="h-5 w-5" />
             </Button>
         </div>
     </header>
@@ -625,17 +627,20 @@ const BottomNav = ({
                         type="button"
                         onClick={() => onChange(key)}
                         className={cn(
-                            'flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                            'flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                             active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                         )}
                     >
                         <span
                             className={cn(
-                                'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+                                'flex h-11 w-11 items-center justify-center rounded-full transition-colors',
                                 active ? 'bg-primary/10' : 'bg-transparent'
                             )}
                         >
-                            <Icon className="h-4.5 w-4.5" />
+                            {/* Sized with the prop, not a class: Phosphor icons
+                                default to 1em, so they inherit the label's tiny
+                                font size when no explicit size is given. */}
+                            <Icon size={ICON.nav} weight={active ? 'fill' : 'regular'} />
                         </span>
                         <span className="leading-none">{label}</span>
                     </button>
@@ -765,6 +770,16 @@ export const FootballDashboard = () => {
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
     const fixtureGameweeks = useMemo(() => buildGameweeks(sortedFixtures), [sortedFixtures]);
     const selectedGameweek = fixtureGameweeks[selectedGameweekIndex] ?? fixtureGameweeks[0] ?? null;
+    // selectedGameweekIndex starts at -1 ("not chosen yet"), which falls back to
+    // the first gameweek above — the arrows need that resolved index.
+    const gameweekIndex =
+        selectedGameweekIndex >= 0 && selectedGameweekIndex < fixtureGameweeks.length
+            ? selectedGameweekIndex
+            : 0;
+    const stepGameweek = (delta: number) =>
+        setSelectedGameweekIndex(
+            Math.min(Math.max(gameweekIndex + delta, 0), Math.max(fixtureGameweeks.length - 1, 0))
+        );
 
     useEffect(() => {
         if (!fixtureGameweeks.length) {
@@ -848,7 +863,7 @@ export const FootballDashboard = () => {
 
             {newsLoading ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <CircleNotch className="h-4 w-4 animate-spin" />
                     Loading news…
                 </div>
             ) : newsError ? (
@@ -943,7 +958,7 @@ export const FootballDashboard = () => {
 
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={BarChart3}
+                    icon={ChartBar}
                     title="TOP PLAYER STATISTICS"
                     subtitle="Rankings from completed matches in the selected competition and season."
                 />
@@ -973,7 +988,7 @@ export const FootballDashboard = () => {
                                     </option>
                                 ))}
                             </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         </div>
                     </label>
 
@@ -994,7 +1009,7 @@ export const FootballDashboard = () => {
                                     </option>
                                 ))}
                             </select>
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         </div>
                     </label>
                 </div>
@@ -1002,7 +1017,7 @@ export const FootballDashboard = () => {
                 <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                     {rankingsLoading ? (
                         <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <CircleNotch className="h-3.5 w-3.5 animate-spin" />
                             <span>Loading rankings...</span>
                         </>
                     ) : (
@@ -1019,7 +1034,7 @@ export const FootballDashboard = () => {
 
             {!rankingsError && rankingsLoading && !rankingsData ? (
                 <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <CircleNotch className="h-4 w-4 animate-spin" />
                     Loading player statistics...
                 </ShellCard>
             ) : (
@@ -1051,7 +1066,7 @@ export const FootballDashboard = () => {
         <div className="space-y-4">
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={ShieldHalf}
+                    icon={Shield}
                     title="PSL Table"
                     subtitle="League standings are calculated from completed matches only."
                 />
@@ -1065,7 +1080,7 @@ export const FootballDashboard = () => {
                         >
                             <option value={seasonName ?? ''}>{seasonName ?? 'Current season'}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <CaretDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     </div>
                     <span className="text-xs text-muted-foreground">
                         {coreLoading ? 'Updating table…' : `${standings.length} teams`}
@@ -1082,7 +1097,7 @@ export const FootballDashboard = () => {
             <ShellCard className="overflow-hidden">
                 {coreLoading && standings.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading table…
                     </div>
                 ) : (
@@ -1120,7 +1135,7 @@ export const FootballDashboard = () => {
             >
                 {coreLoading && sortedFixtures.length === 0 ? (
                     <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading fixtures…
                     </ShellCard>
                 ) : !selectedGameweek ? (
@@ -1130,19 +1145,37 @@ export const FootballDashboard = () => {
                 ) : (
                     <>
                         <ShellCard className="p-4">
-                            <div className="text-center">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
-                                    {selectedGameweek.label}
-                                </p>
-                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(-1)}
+                                    disabled={gameweekIndex <= 0}
+                                    aria-label="Previous gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretLeft size={ICON.action} weight="bold" />
+                                </button>
 
-                            <div
-                                className="mx-auto mt-4 flex h-8 w-24 items-center justify-center overflow-hidden rounded-full bg-emerald-500/5 shadow-inner"
-                                aria-label="Swipe between gameweeks"
-                            >
-                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/50" />
-                                <span className="mx-2 h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/40 [animation-delay:250ms]" />
-                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/30 [animation-delay:500ms]" />
+                                <div className="min-w-0 text-center">
+                                    <p className="truncate text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                        {selectedGameweek.label}
+                                    </p>
+                                    {selectedGameweek.dateRange && (
+                                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                            {selectedGameweek.dateRange}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(1)}
+                                    disabled={gameweekIndex >= fixtureGameweeks.length - 1}
+                                    aria-label="Next gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretRight size={ICON.action} weight="bold" />
+                                </button>
                             </div>
                         </ShellCard>
 
