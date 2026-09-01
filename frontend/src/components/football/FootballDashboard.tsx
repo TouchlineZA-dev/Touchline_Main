@@ -4,8 +4,11 @@ import {
     ArrowRight,
     Broadcast,
     CaretDown,
+    CaretLeft,
+    CaretRight,
     ChartBar,
     CircleNotch,
+    ICON,
     Medal,
     Newspaper,
     Shield,
@@ -764,6 +767,16 @@ export const FootballDashboard = () => {
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
     const fixtureGameweeks = useMemo(() => buildGameweeks(sortedFixtures), [sortedFixtures]);
     const selectedGameweek = fixtureGameweeks[selectedGameweekIndex] ?? fixtureGameweeks[0] ?? null;
+    // selectedGameweekIndex starts at -1 ("not chosen yet"), which falls back to
+    // the first gameweek above — the arrows need that resolved index.
+    const gameweekIndex =
+        selectedGameweekIndex >= 0 && selectedGameweekIndex < fixtureGameweeks.length
+            ? selectedGameweekIndex
+            : 0;
+    const stepGameweek = (delta: number) =>
+        setSelectedGameweekIndex(
+            Math.min(Math.max(gameweekIndex + delta, 0), Math.max(fixtureGameweeks.length - 1, 0))
+        );
 
     useEffect(() => {
         if (!fixtureGameweeks.length) {
@@ -1129,19 +1142,37 @@ export const FootballDashboard = () => {
                 ) : (
                     <>
                         <ShellCard className="p-4">
-                            <div className="text-center">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
-                                    {selectedGameweek.label}
-                                </p>
-                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(-1)}
+                                    disabled={gameweekIndex <= 0}
+                                    aria-label="Previous gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretLeft size={ICON.action} weight="bold" />
+                                </button>
 
-                            <div
-                                className="mx-auto mt-4 flex h-8 w-24 items-center justify-center overflow-hidden rounded-full bg-emerald-500/5 shadow-inner"
-                                aria-label="Swipe between gameweeks"
-                            >
-                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/50" />
-                                <span className="mx-2 h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/40 [animation-delay:250ms]" />
-                                <span className="h-2 w-2 animate-[ping_1.6s_ease-in-out_infinite] rounded-full bg-primary/30 [animation-delay:500ms]" />
+                                <div className="min-w-0 text-center">
+                                    <p className="truncate text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                        {selectedGameweek.label}
+                                    </p>
+                                    {selectedGameweek.dateRange && (
+                                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                            {selectedGameweek.dateRange}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(1)}
+                                    disabled={gameweekIndex >= fixtureGameweeks.length - 1}
+                                    aria-label="Next gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretRight size={ICON.action} weight="bold" />
+                                </button>
                             </div>
                         </ShellCard>
 
