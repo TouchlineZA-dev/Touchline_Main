@@ -180,6 +180,10 @@ export const handler = async (event) => {
                           : null,
                 player: nameOf(e.sportmonks_player_id, e.player_name),
                 relatedPlayer: nameOf(e.sportmonks_related_player_id, e.related_player_name),
+                // Ids as well as names: the lineup view pins events to players,
+                // and matching on a display name is fragile.
+                sportmonksPlayerId: e.sportmonks_player_id,
+                relatedSportmonksPlayerId: e.sportmonks_related_player_id,
                 result: e.result
             }))
             .sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0) || (a.extraMinute ?? 0) - (b.extraMinute ?? 0));

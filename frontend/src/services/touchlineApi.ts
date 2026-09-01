@@ -147,6 +147,9 @@ export interface ApiMatchEvent {
     player: string | null;
     /** Second player: substitution partner, or possible assist (unreliable). */
     relatedPlayer: string | null;
+    /** Sportmonks ids, for pinning events to lineup entries. */
+    sportmonksPlayerId: number | null;
+    relatedSportmonksPlayerId: number | null;
     result: string | null;
 }
 

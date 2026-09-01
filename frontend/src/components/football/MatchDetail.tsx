@@ -11,12 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     ApiFixture,
     ApiMatchDetail,
-    ApiLineupPlayer,
     ApiMatchEvent,
     fetchMatchDetail,
     toSast
 } from '@/services/touchlineApi';
 import { TeamCrest } from './TeamCrest';
+import { Pitch } from './Pitch';
 import { cn } from '@/lib/utils';
 import {
     ArrowDown,
@@ -264,58 +264,6 @@ const Timeline = ({ detail }: { detail: ApiMatchDetail }) => {
     );
 };
 
-const LineupColumn = ({
-    title,
-    starting,
-    bench
-}: {
-    title: string;
-    starting: ApiLineupPlayer[];
-    bench: ApiLineupPlayer[];
-}) => (
-    <div className="space-y-3">
-        <h4 className="text-sm font-semibold">{title}</h4>
-
-        {starting.length === 0 && bench.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Lineup not published.</p>
-        ) : (
-            <>
-                <ul className="space-y-1 text-sm">
-                    {starting.map((player) => (
-                        <li key={player.id} className="flex items-center gap-2">
-                            <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
-                                {player.jerseyNumber ?? ''}
-                            </span>
-                            <span className="truncate">{player.player ?? 'Unknown'}</span>
-                            {player.position && (
-                                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                                    {player.position}
-                                </span>
-                            )}
-                        </li>
-                    ))}
-                </ul>
-
-                {bench.length > 0 && (
-                    <div className="space-y-1 border-t pt-2">
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Bench</p>
-                        <ul className="space-y-1 text-sm text-muted-foreground">
-                            {bench.map((player) => (
-                                <li key={player.id} className="flex items-center gap-2">
-                                    <span className="w-6 shrink-0 text-right tabular-nums">
-                                        {player.jerseyNumber ?? ''}
-                                    </span>
-                                    <span className="truncate">{player.player ?? 'Unknown'}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-            </>
-        )}
-    </div>
-);
-
 const StatBar = ({ label, home, away }: { label: string; home: number | null; away: number | null }) => {
     const h = home ?? 0;
     const a = away ?? 0;
@@ -413,16 +361,18 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                             <Timeline detail={detail} />
                         </TabsContent>
 
-                        <TabsContent value="lineups" className="mt-4 grid gap-6 sm:grid-cols-2">
-                            <LineupColumn
-                                title={detail.fixture.homeTeam?.name ?? 'Home'}
+                        <TabsContent value="lineups" className="mt-4 space-y-6">
+                            <Pitch
+                                team={detail.fixture.homeTeam}
                                 starting={detail.lineups.home.starting}
                                 bench={detail.lineups.home.bench}
+                                events={detail.events.filter((e) => e.side === 'home')}
                             />
-                            <LineupColumn
-                                title={detail.fixture.awayTeam?.name ?? 'Away'}
+                            <Pitch
+                                team={detail.fixture.awayTeam}
                                 starting={detail.lineups.away.starting}
                                 bench={detail.lineups.away.bench}
+                                events={detail.events.filter((e) => e.side === 'away')}
                             />
                         </TabsContent>
 
