@@ -319,7 +319,7 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
 
     return (
         <Dialog open={fixture !== null} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+            <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center justify-center gap-3 text-base">
                         <span className="flex items-center gap-2">

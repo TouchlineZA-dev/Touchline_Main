@@ -95,11 +95,11 @@ const PlayerToken = ({
     const goalCount = (marks?.goals ?? 0) + (marks?.penalties ?? 0);
 
     return (
-        <div className="flex w-16 flex-col items-center gap-1">
+        <div className="flex w-[4.5rem] flex-col items-center gap-1.5">
             <div className="relative">
                 {/* Photos are deliberately not used yet — the shirt number reads
                     better at this size and never 404s. */}
-                <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/70 bg-white/15 text-sm font-semibold text-white shadow-sm backdrop-blur-[1px]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-[15px] font-bold text-emerald-900 shadow-[0_2px_8px_rgba(0,0,0,0.25)] ring-1 ring-black/5">
                     {player.jerseyNumber ?? '–'}
                 </div>
 
@@ -134,7 +134,7 @@ const PlayerToken = ({
                 )}
             </div>
 
-            <span className="w-full truncate text-center text-[11px] font-medium text-white drop-shadow">
+            <span className="max-w-full truncate rounded-full bg-black/35 px-2 py-0.5 text-center text-[11px] font-medium leading-tight text-white backdrop-blur-[2px]">
                 {shortName(player.player)}
             </span>
         </div>
@@ -180,32 +180,48 @@ export const Pitch = ({
         .join('-');
 
     return (
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <TeamCrest crest={team?.crest} name={team?.name} size={22} />
-                <h4 className="text-sm font-semibold">{team?.name ?? 'Team'}</h4>
+        <div className="space-y-4">
+            <div className="flex items-center gap-2.5">
+                <TeamCrest crest={team?.crest} name={team?.name} size={26} />
+                <h4 className="text-[15px] font-semibold">{team?.name ?? 'Team'}</h4>
                 {formation && (
-                    <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                    <span className="ml-auto rounded-full border bg-muted/60 px-2.5 py-1 text-xs font-semibold tabular-nums tracking-wide text-muted-foreground">
                         {formation}
                     </span>
                 )}
             </div>
 
-            <div className="relative overflow-hidden rounded-lg bg-gradient-to-b from-emerald-700 to-emerald-800 py-5">
-                {/* Pitch markings, purely decorative. */}
-                <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-                    <div className="absolute inset-x-0 top-0 mx-auto h-14 w-2/5 rounded-b border-x-2 border-b-2 border-white/25" />
-                    <div className="absolute inset-x-0 bottom-0 mx-auto h-0 w-1/2 border-t-2 border-white/25" />
-                    <div className="absolute bottom-0 left-1/2 h-16 w-16 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white/25" />
+            <div className="relative isolate min-h-[27rem] overflow-hidden rounded-xl bg-gradient-to-b from-emerald-600 via-emerald-700 to-emerald-800 shadow-inner">
+                {/* Mown stripes. */}
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.13]"
+                    style={{
+                        backgroundImage:
+                            'repeating-linear-gradient(180deg, #fff 0 12%, transparent 12% 24%)'
+                    }}
+                    aria-hidden="true"
+                />
+
+                {/* Markings. The goalkeeper's row is at the top, so that is this
+                    team's own goal; the halfway line sits at the bottom. */}
+                <div className="pointer-events-none absolute inset-0 text-white/30" aria-hidden="true">
+                    <div className="absolute inset-2 rounded-lg border-2 border-current" />
+                    <div className="absolute left-1/2 top-2 h-24 w-[55%] -translate-x-1/2 rounded-b-md border-x-2 border-b-2 border-current" />
+                    <div className="absolute left-1/2 top-2 h-10 w-[28%] -translate-x-1/2 rounded-b-md border-x-2 border-b-2 border-current" />
+                    <div className="absolute left-1/2 top-[6.75rem] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-current" />
+                    <div className="absolute inset-x-2 bottom-2 border-t-2 border-current" />
+                    <div className="absolute bottom-2 left-1/2 h-20 w-20 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-current" />
                 </div>
 
-                <div className="relative space-y-5">
+                {/* Rows share the height evenly, so the shape reads as a real
+                    formation rather than a stack pinned to the top. */}
+                <div className="relative flex min-h-[27rem] flex-col justify-around gap-2 py-7">
                     {rows
                         .filter((row) => row.players.length > 0)
                         .map((row) => (
                             <div
                                 key={row.id}
-                                className="flex flex-wrap items-start justify-center gap-x-2 gap-y-3 px-2"
+                                className="flex items-start justify-evenly gap-x-1 gap-y-3 px-1"
                             >
                                 {row.players.map((player) => (
                                     <PlayerToken
@@ -221,10 +237,10 @@ export const Pitch = ({
 
             {bench.length > 0 && (
                 <div>
-                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Bench
                     </p>
-                    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
                         {bench.map((player) => (
                             <li key={player.id} className="flex items-center gap-1.5">
                                 <span className="w-5 text-right text-xs tabular-nums">
