@@ -120,7 +120,10 @@ const PlayerToken = ({ player, marks }: { player: ApiLineupPlayer; marks?: Playe
             )}
 
             {(marks?.yellow || marks?.red) && (
-                <span className="absolute -left-1.5 top-0 rounded-[2px] bg-white p-[1px] shadow">
+                // No white backing plate: the card is already a solid shape, so a
+                // wrapper just reads as a white box behind it. A drop shadow gives
+                // the same separation from the turf.
+                <span className="absolute -left-1.5 top-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
                     <CardMark colour={marks.red ? 'red' : 'yellow'} />
                 </span>
             )}
