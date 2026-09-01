@@ -16,23 +16,58 @@ const EVENT_TYPES = {
 // Events worth rendering on a timeline; anything else is noise for a results app.
 const TIMELINE_TYPES = new Set([14, 15, 16, 17, 18, 19, 20, 21]);
 
-// §6 team-level stat codes. player_match_stats is team-level despite its name.
+// Team-level stat codes. player_match_stats is team-level despite its name.
+//
+// The integration guide (§6) names only 11 of the 45 ids present in the data.
+// The rest were identified by probing the database, and each is marked with the
+// evidence. Anything still unidentified is deliberately left out: an unlabelled
+// "Stat 27265" is worse for a reader than showing nothing.
+//
+// To replace inference with fact: GET https://api.sportmonks.com/v3/core/types
+// with SPORTMONKS_API_KEY, which returns the authoritative names.
 const STAT_TYPES = {
-    34: 'Corners',
-    42: 'Shots total',
+    // --- verified against events or arithmetic within the data ---
+    45: 'Possession %', //  home + away = 100 in 249/250 fixtures
+    52: 'Goals', //          matches counted goal events, 97%
+    83: 'Red cards', //      matches red/second-yellow events, 97%
+    84: 'Yellow cards', //   matches yellow events, 86%
+    59: 'Substitutions', //  matches substitution events, 87%
+    80: 'Passes', //         82 = 81/80 as a percentage in 492/494 cases
+    81: 'Successful passes',
+    82: 'Pass accuracy %',
+    42: 'Shots total', //    42 = 86 + 41 + 58 in 96% of cases
     86: 'Shots on target',
-    45: 'Possession %',
+    41: 'Shots off target',
+    58: 'Shots blocked',
+
+    // --- from the integration guide §6 ---
+    34: 'Corners',
     51: 'Offsides',
-    52: 'Goals',
     56: 'Fouls',
     57: 'Saves',
     79: 'Assists',
-    83: 'Red cards',
-    84: 'Yellow cards'
+
+    // --- inferred: structurally consistent, standard Sportmonks naming.
+    //     Confirm against /v3/core/types before treating as fact. ---
+    49: 'Shots inside box', //   42 >= 49 in 100% of cases
+    50: 'Shots outside box', //  49 + 50 ≈ 42 in 71% of cases
+    43: 'Attacks', //            43 >= 44 in 98% of cases
+    44: 'Dangerous attacks',
+    // 98/99 are a total-and-subset pair (98 >= 99 in 100% of cases), but the
+    // magnitudes are far too low for duels — a match shows ~11-30, not the
+    // hundreds a real duel count would give. Left unlabelled rather than named
+    // wrongly; crosses and successful crosses would fit the ratio.
+    100: 'Interceptions',
+    78: 'Tackles',
+    60: 'Throw-ins',
+    64: 'Hit woodwork'
 };
 
-// Order stats are displayed in; anything unrecognised is appended after these.
-const STAT_ORDER = [45, 42, 86, 34, 56, 84, 83, 51, 57, 79];
+// Display order; anything recognised but unlisted is appended after these.
+const STAT_ORDER = [
+    45, 42, 86, 41, 58, 49, 50, 34, 51, 56, 84, 83, 57, 80, 81, 82, 78, 100,
+    43, 44, 60, 64, 79, 59, 52
+];
 
 const POSITION_NAMES = {
     24: 'GK',
@@ -229,13 +264,18 @@ export const handler = async (event) => {
         };
 
         const statistics = statTypeIds
+            .filter((typeId) => STAT_TYPES[typeId])
             .map((typeId) => ({
                 typeId,
-                label: STAT_TYPES[typeId] || `Stat ${typeId}`,
+                label: STAT_TYPES[typeId],
                 home: valueFor(typeId, 'home'),
                 away: valueFor(typeId, 'away')
             }))
             .filter((s) => s.home !== null || s.away !== null);
+
+        // Surfaced so it is obvious when the provider adds codes we cannot name,
+        // rather than them silently disappearing.
+        const unlabelledStatTypes = statTypeIds.filter((typeId) => !STAT_TYPES[typeId]);
 
         return jsonResponse(200, {
             fixture: {
@@ -258,6 +298,7 @@ export const handler = async (event) => {
                 away: lineupsFor(fixture.away_team_id)
             },
             statistics,
+            unlabelledStatTypes,
             // The Starter plan has no dependable per-player numbers (§9) — the
             // UI must present `statistics` as team totals, never per player.
             statisticsAreTeamLevel: true

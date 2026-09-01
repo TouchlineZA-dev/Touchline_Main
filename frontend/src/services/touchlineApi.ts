@@ -191,6 +191,8 @@ export interface ApiMatchDetail {
         away: { starting: ApiLineupPlayer[]; bench: ApiLineupPlayer[] };
     };
     statistics: ApiTeamStat[];
+    /** Provider stat codes we have no name for; withheld from `statistics`. */
+    unlabelledStatTypes?: number[];
     /** Always true on this data plan — never present these as per-player. */
     statisticsAreTeamLevel: boolean;
 }
