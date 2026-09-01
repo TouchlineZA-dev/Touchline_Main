@@ -627,17 +627,20 @@ const BottomNav = ({
                         type="button"
                         onClick={() => onChange(key)}
                         className={cn(
-                            'flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                            'flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                             active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                         )}
                     >
                         <span
                             className={cn(
-                                'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+                                'flex h-11 w-11 items-center justify-center rounded-full transition-colors',
                                 active ? 'bg-primary/10' : 'bg-transparent'
                             )}
                         >
-                            <Icon className="h-4.5 w-4.5" />
+                            {/* Sized with the prop, not a class: Phosphor icons
+                                default to 1em, so they inherit the label's tiny
+                                font size when no explicit size is given. */}
+                            <Icon size={ICON.nav} weight={active ? 'fill' : 'regular'} />
                         </span>
                         <span className="leading-none">{label}</span>
                     </button>

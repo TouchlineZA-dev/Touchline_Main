@@ -77,7 +77,7 @@ export {
 
 /** Sizes from the kit's styling notes. */
 export const ICON = {
-    nav: 22,
+    nav: 26,
     inline: 18,
     action: 20,
     empty: 32
