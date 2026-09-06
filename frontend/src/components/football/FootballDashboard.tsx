@@ -943,19 +943,6 @@ export const FootballDashboard = () => {
 
     const renderLeagues = () => (
         <div className="space-y-4">
-            <PlaceholderPanel
-                title="Leagues Coming Soon"
-                description="Private leagues, invites, and league tables are coming soon. Use the buttons below to jump back into the working football sections."
-                primary={{
-                    label: 'Open PSL table',
-                    onClick: () => setScreen('table')
-                }}
-                secondary={{
-                    label: 'Go to news',
-                    onClick: () => setScreen('news')
-                }}
-            />
-
             <ShellCard className="p-4">
                 <SectionTitle
                     icon={ChartBar}
@@ -984,7 +971,9 @@ export const FootballDashboard = () => {
                                         key={competition.sportmonksCompetitionId}
                                         value={competition.sportmonksCompetitionId}
                                     >
-                                        {competition.shortCode || competition.name}
+                                        {competition.shortCode === 'ZAF PL'
+                                            ? 'PSL'
+                                            : competition.shortCode || competition.name}
                                     </option>
                                 ))}
                             </select>

@@ -1,0 +1,19 @@
+{
+  "name": "Touchline SA",
+  "short_name": "Touchline",
+  "description": "Live scores, fixtures, results and the league table for South African football.",
+  "start_url": "https://touchlinesa.co.za/",
+  "scope": "https://touchlinesa.co.za/",
+  "display": "standalone",
+  "background_color": "#f2fbf4",
+  "theme_color": "#2D7D32",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/touchline-logo.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
