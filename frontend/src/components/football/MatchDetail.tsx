@@ -13,8 +13,10 @@ import {
     ApiMatchDetail,
     ApiMatchEvent,
     fetchMatchDetail,
+    isLive,
     toSast
 } from '@/services/touchlineApi';
+import { useLiveMatchTimer } from './LiveMatchTimer';
 import { TeamCrest } from './TeamCrest';
 import { Pitch } from './Pitch';
 import { cn } from '@/lib/utils';
@@ -290,6 +292,13 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const isMatchLive = fixture ? isLive(fixture) : false;
+    const liveTimer = useLiveMatchTimer(
+        fixture?.kickoff ?? null,
+        fixture?.stateId ?? null,
+        fixture?.scorers
+    );
+
     useEffect(() => {
         if (!fixture) {
             setDetail(null);
@@ -326,7 +335,7 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                             <TeamCrest crest={fixture?.homeCrest} name={fixture?.homeTeam} size={24} />
                             {fixture?.homeTeam}
                         </span>
-                        <span className="tabular-nums">
+                        <span className={cn('tabular-nums font-bold', isMatchLive && 'text-red-600')}>
                             {fixture?.homeScore ?? '-'} : {fixture?.awayScore ?? '-'}
                         </span>
                         <span className="flex items-center gap-2">
@@ -335,7 +344,23 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                         </span>
                     </DialogTitle>
                     <DialogDescription className="text-center">
-                        {fixture?.status} · {toSast(fixture?.kickoff ?? null)} (SAST)
+                        {isMatchLive ? (
+                            <span className="inline-flex items-center gap-1.5 font-bold text-red-600">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                                </span>
+                                <span>LIVE</span>
+                                <span className="rounded bg-red-600/10 px-1.5 py-0.5 text-xs font-black tabular-nums">
+                                    {liveTimer.label}
+                                </span>
+                                <span className="text-xs font-normal text-muted-foreground">
+                                    ({liveTimer.periodLabel} · {liveTimer.clock})
+                                </span>
+                            </span>
+                        ) : (
+                            <>{fixture?.status} · {toSast(fixture?.kickoff ?? null)} (SAST)</>
+                        )}
                     </DialogDescription>
                 </DialogHeader>
 

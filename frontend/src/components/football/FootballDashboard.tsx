@@ -37,10 +37,12 @@ import {
     fetchPlayers,
     fetchStandings,
     isFinished,
+    isLive,
     sastDate,
     sastDayKey,
     sastTime
 } from '@/services/touchlineApi';
+import { useLiveMatchTimer } from './LiveMatchTimer';
 import { cn } from '@/lib/utils';
 
 const REFRESH_MS = 60_000;
@@ -216,18 +218,25 @@ const TeamLine = ({
     crest,
     name,
     score,
-    align = 'left'
+    align = 'left',
+    highlight = false
 }: {
     crest: string | null;
     name: string;
     score: number | null;
     align?: 'left' | 'right';
+    highlight?: boolean;
 }) => (
     <div className={cn('flex min-w-0 items-center gap-2', align === 'right' && 'justify-end text-right')}>
         {align === 'left' && <TeamCrest crest={crest} name={name} size={24} />}
         <div className={cn('min-w-0', align === 'right' && 'order-2')}>
             <p className="truncate text-sm font-medium leading-tight">{name}</p>
-            <p className="text-lg font-semibold tabular-nums leading-none text-foreground/90">
+            <p
+                className={cn(
+                    'text-lg font-semibold tabular-nums leading-none',
+                    highlight ? 'font-bold text-red-600' : 'text-foreground/90'
+                )}
+            >
                 {score ?? 0}
             </p>
         </div>
@@ -291,27 +300,54 @@ const LiveFixtureCard = ({
     fixture: ApiFixture;
     onSelect: (fixture: ApiFixture) => void;
 }) => {
+    const live = isLive(fixture);
+    const timer = useLiveMatchTimer(fixture.kickoff, fixture.stateId, fixture.scorers);
     const scorers = fixture.scorers ?? [];
 
     return (
         <button
             type="button"
             onClick={() => onSelect(fixture)}
-            className="w-full rounded-2xl border border-border/70 bg-white p-3 text-left shadow-sm transition-transform duration-200 hover:-translate-y-0.5"
+            className={cn(
+                'w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5',
+                live
+                    ? 'border-red-500/40 shadow-red-500/5 ring-1 ring-red-500/20'
+                    : 'border-border/70'
+            )}
         >
             <div className="flex items-center justify-between gap-2">
+                {live ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                        <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                        </span>
+                        <span>LIVE</span>
+                        <span className="tabular-nums font-black">{timer.label}</span>
+                    </span>
+                ) : (
+                    <span
+                        className={cn(
+                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                            isFinished(fixture)
+                                ? 'bg-muted text-muted-foreground'
+                                : 'bg-emerald-500/10 text-emerald-700'
+                        )}
+                    >
+                        {getStatusLabel(fixture)}
+                    </span>
+                )}
                 <span
                     className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                        isFinished(fixture)
-                            ? 'bg-muted text-muted-foreground'
-                            : 'bg-emerald-500/10 text-emerald-700'
+                        'text-[11px]',
+                        live ? 'font-semibold tabular-nums text-red-600' : 'text-muted-foreground'
                     )}
                 >
-                    {getStatusLabel(fixture)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                    {fixture.kickoff ? sastTime(fixture.kickoff) : 'TBD'}
+                    {live
+                        ? `${timer.periodLabel} · ${timer.clock}`
+                        : fixture.kickoff
+                          ? sastTime(fixture.kickoff)
+                          : 'TBD'}
                 </span>
             </div>
             <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -320,16 +356,29 @@ const LiveFixtureCard = ({
                     name={fixture.homeTeam}
                     score={fixture.homeScore}
                     align="left"
+                    highlight={live}
                 />
-                <div className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    <span>VS</span>
-                    <span>Fixture</span>
-                </div>
+                {live ? (
+                    <div className="flex flex-col items-center gap-0.5 rounded-lg bg-red-500/10 px-2 py-1">
+                        <span className="animate-pulse text-xs font-black tabular-nums text-red-600">
+                            {timer.label}
+                        </span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-red-600">
+                            {timer.period === 'HT' ? 'BREAK' : 'LIVE'}
+                        </span>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        <span>VS</span>
+                        <span>Fixture</span>
+                    </div>
+                )}
                 <TeamLine
                     crest={fixture.awayCrest}
                     name={fixture.awayTeam}
                     score={fixture.awayScore}
                     align="right"
+                    highlight={live}
                 />
             </div>
             <div className="mt-3 border-t border-border/60 pt-2">
@@ -359,7 +408,11 @@ const LiveFixtureCard = ({
                     </div>
                 ) : (
                     <p className="text-[11px] text-muted-foreground">
-                        {isFinished(fixture) ? 'No scorers recorded.' : 'Scorers will appear after goals are recorded.'}
+                        {isFinished(fixture)
+                            ? 'No scorers recorded.'
+                            : live
+                              ? 'Match in progress — scorers will appear here as goals are scored.'
+                              : 'Scorers will appear after goals are recorded.'}
                     </p>
                 )}
             </div>
@@ -612,35 +665,41 @@ const TouchlineHeader = ({
 
 const BottomNav = ({
     screen,
-    onChange
+    onChange,
+    liveCount = 0
 }: {
     screen: Screen;
     onChange: (screen: Screen) => void;
+    liveCount?: number;
 }) => (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/95 backdrop-blur">
         <div className="mx-auto grid max-w-[28rem] grid-cols-5 px-2 py-2">
             {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
                 const active = screen === key;
+                const hasLive = key === 'live' && liveCount > 0;
                 return (
                     <button
                         key={key}
                         type="button"
                         onClick={() => onChange(key)}
                         className={cn(
-                            'flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors',
+                            'relative flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                             active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                         )}
                     >
                         <span
                             className={cn(
-                                'flex h-11 w-11 items-center justify-center rounded-full transition-colors',
+                                'relative flex h-11 w-11 items-center justify-center rounded-full transition-colors',
                                 active ? 'bg-primary/10' : 'bg-transparent'
                             )}
                         >
-                            {/* Sized with the prop, not a class: Phosphor icons
-                                default to 1em, so they inherit the label's tiny
-                                font size when no explicit size is given. */}
                             <Icon size={ICON.nav} weight={active ? 'fill' : 'regular'} />
+                            {hasLive && (
+                                <span className="absolute right-1 top-1 flex h-2.5 w-2.5">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                                </span>
+                            )}
                         </span>
                         <span className="leading-none">{label}</span>
                     </button>
@@ -761,6 +820,11 @@ export const FootballDashboard = () => {
     const sortedFixtures = useMemo(
         () => [...fixtures].sort((a, b) => Date.parse(a.kickoff ?? '') - Date.parse(b.kickoff ?? '')),
         [fixtures]
+    );
+
+    const liveFixtures = useMemo(
+        () => sortedFixtures.filter(isLive),
+        [sortedFixtures]
     );
 
     const upcomingFixtures = useMemo(
@@ -1106,6 +1170,34 @@ export const FootballDashboard = () => {
                 </ShellCard>
             )}
 
+            {liveFixtures.length > 0 && (
+                <div className="space-y-2 rounded-2xl border border-red-500/30 bg-red-500/5 p-3">
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                            </span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-red-700">
+                                Live Now ({liveFixtures.length})
+                            </span>
+                        </div>
+                        <span className="animate-pulse text-[10px] font-semibold uppercase tracking-wider text-red-600">
+                            Live Timers Active
+                        </span>
+                    </div>
+                    <div className="space-y-2.5">
+                        {liveFixtures.map((fixture) => (
+                            <LiveFixtureCard
+                                key={`live-featured-${fixture.id}`}
+                                fixture={fixture}
+                                onSelect={setSelectedFixture}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <section
                 className="space-y-3"
                 onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)}
@@ -1220,7 +1312,7 @@ export const FootballDashboard = () => {
                 {currentScreen()}
             </main>
 
-            <BottomNav screen={screen} onChange={changeScreen} />
+            <BottomNav screen={screen} onChange={changeScreen} liveCount={liveFixtures.length} />
             <MatchDetail fixture={selectedFixture} onClose={() => setSelectedFixture(null)} />
             <PlayerPoolDialog open={playerPoolOpen} onOpenChange={setPlayerPoolOpen} />
         </div>

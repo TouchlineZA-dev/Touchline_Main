@@ -6,7 +6,13 @@
  * Netlify functions in `netlify/functions/`.
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+const isNative = typeof window !== 'undefined' &&
+    window.location?.protocol === 'https:' &&
+    window.location?.hostname === 'localhost';
+
+const API_BASE_URL = isNative
+    ? 'https://backendfpsl.netlify.app/api/v1'
+    : (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
 export type Position = 'GK' | 'DEF' | 'MID' | 'ATT';
 
@@ -283,7 +289,22 @@ export const FINAL_STATE_IDS = [5, 7, 8];
 export const isFinished = (fixture: Pick<ApiFixture, 'stateId'>) =>
     fixture.stateId !== null && FINAL_STATE_IDS.includes(fixture.stateId);
 
-export const isLive = (fixture: Pick<ApiFixture, 'stateId'>) => fixture.stateId === 22;
+export const LIVE_STATE_IDS = [2, 3, 4, 6, 9, 21, 22];
+
+export const isLive = (
+    fixture: Pick<ApiFixture, 'stateId'> & { status?: string; kickoff?: string | null }
+) => {
+    if (fixture.status === 'Live') return true;
+    if (fixture.stateId !== null && LIVE_STATE_IDS.includes(fixture.stateId)) return true;
+    if (fixture.kickoff && !isFinished(fixture) && !hasNoResult(fixture)) {
+        const start = Date.parse(fixture.kickoff);
+        const now = Date.now();
+        if (!isNaN(start) && now >= start && now - start < 125 * 60 * 1000) {
+            return true;
+        }
+    }
+    return false;
+};
 
 /** Postponed / cancelled / abandoned — shown, but never counted as a result. */
 export const hasNoResult = (fixture: Pick<ApiFixture, 'stateId'>) =>

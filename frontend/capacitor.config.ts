@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Touchline SA',
   webDir: 'dist',
   server: {
-    androidScheme: 'http'
+    androidScheme: 'https'
   },
   plugins: {
     SplashScreen: {

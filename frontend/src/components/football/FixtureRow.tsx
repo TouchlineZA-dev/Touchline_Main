@@ -1,6 +1,7 @@
 import { ApiFixture, sastTime, isLive, isFinished, hasNoResult } from '@/services/touchlineApi';
 import { TeamCrest } from './TeamCrest';
-import { Broadcast, Clock, ICON, WarningCircle } from './icons';
+import { Clock, WarningCircle } from './icons';
+import { LiveTimerBadge } from './LiveMatchTimer';
 import { cn } from '@/lib/utils';
 
 interface FixtureRowProps {
@@ -10,12 +11,7 @@ interface FixtureRowProps {
 
 const StatusBadge = ({ fixture }: { fixture: ApiFixture }) => {
     if (isLive(fixture)) {
-        return (
-            <span className="flex items-center gap-1 text-xs font-semibold text-red-600">
-                <Broadcast size={14} weight="bold" className="animate-pulse" />
-                LIVE
-            </span>
-        );
+        return <LiveTimerBadge fixture={fixture} />;
     }
 
     if (isFinished(fixture)) {
