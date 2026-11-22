@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Brand, Fonts } from '@/src/theme/design';
 
 export default function TabLayout() {
   return (
@@ -8,24 +9,18 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1E8E4F', // Exact green from Figma
-          height: 68,
-          paddingBottom: 8,
+          backgroundColor: Brand.green,
+          height: 64,
+          paddingBottom: 6,
           paddingTop: 6,
           borderTopWidth: 0,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.15,
-          shadowRadius: 4,
         },
         tabBarActiveTintColor: '#FFFFFF',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.75)',
+        tabBarInactiveTintColor: '#FFFFFF',
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '900',
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
+          fontFamily: Fonts.display,
+          fontSize: 11,
+          letterSpacing: 0.3,
           marginTop: 2,
         },
       }}
@@ -62,7 +57,7 @@ export default function TabLayout() {
         options={{
           title: 'PSL TABLE',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="table-large" size={24} color={String(color)} />
+            <Feather name="layout" size={24} color={String(color)} />
           ),
         }}
       />
@@ -71,7 +66,7 @@ export default function TabLayout() {
         options={{
           title: 'LIVE GAMES',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="football-outline" size={24} color={String(color)} />
+            <MaterialCommunityIcons name="soccer" size={26} color={String(color)} />
           ),
         }}
       />

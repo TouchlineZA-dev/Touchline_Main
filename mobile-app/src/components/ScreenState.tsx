@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, StyleProp, ViewStyle } from 'react-native';
 import { Colors, Spacing, Typography } from '../theme';
+import { Fonts } from '../theme/design';
 
 interface ScreenStateProps {
   type: 'loading' | 'empty' | 'error' | 'offline';
@@ -76,7 +77,8 @@ const styles = StyleSheet.create({
   },
   titleLight: {
     color: '#111827',
-    fontWeight: '800',
+    fontFamily: Fonts.heading,
+    fontWeight: undefined,
   },
   text: {
     ...Typography.body,
@@ -86,6 +88,8 @@ const styles = StyleSheet.create({
   },
   textLight: {
     color: '#4B5563',
+    fontFamily: Fonts.body,
+    fontWeight: undefined,
   },
   retryButton: {
     backgroundColor: Colors.primary,
@@ -103,5 +107,7 @@ const styles = StyleSheet.create({
   },
   retryTextLight: {
     color: '#FFFFFF',
+    fontFamily: Fonts.bodySemi,
+    fontWeight: undefined,
   },
 });

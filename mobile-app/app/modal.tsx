@@ -6,42 +6,67 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Platform,
+  ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { useAuth } from '@/src/lib/auth/AuthContext';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/src/lib/auth/AuthContext';
+import { supabase } from '@/src/lib/auth/supabaseClient';
+import { Brand, Fonts } from '@/src/theme/design';
 
-export default function AuthModalScreen() {
+type Mode = 'start' | 'login' | 'register';
+type OAuthProvider = 'google' | 'apple' | 'facebook';
+
+const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
+
+export default function StartScreen() {
+  const insets = useSafeAreaInsets();
   const { user, signIn, signUp, signOut } = useAuth();
-  const [isLogin, setIsLogin] = useState(true);
+  const [mode, setMode] = useState<Mode>('start');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
-  const handleSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert('Required', 'Please fill in both email and password.');
+  const oauth = async (provider: OAuthProvider) => {
+    setMessage(null);
+    if (Platform.OS !== 'web') {
+      setMessage({ text: 'Social sign-in is available on web for now. Use email to log in.', error: true });
       return;
     }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) setMessage({ text: error.message, error: true });
+  };
 
+  const submit = async () => {
+    if (mode === 'start') {
+      setMode('login');
+      return;
+    }
+    if (!email || !password) {
+      setMessage({ text: 'Please enter your email and password.', error: true });
+      return;
+    }
     setLoading(true);
+    setMessage(null);
     try {
-      if (isLogin) {
+      if (mode === 'login') {
         const { error } = await signIn(email, password);
-        if (error) {
-          Alert.alert('Sign In Failed', error.message);
-        } else {
-          Alert.alert('Success', 'Welcome back!');
-          router.back();
-        }
+        if (error) setMessage({ text: error.message, error: true });
+        else close();
       } else {
-        const { error } = await signUp(email, password, username);
-        if (error) {
-          Alert.alert('Sign Up Failed', error.message);
-        } else {
-          Alert.alert('Account Created', 'Please check your email to confirm registration.');
-          router.back();
+        const { error } = await signUp(email, password, username || undefined);
+        if (error) setMessage({ text: error.message, error: true });
+        else {
+          setMessage({ text: 'Account created. Check your email to confirm, then log in.', error: false });
+          setMode('login');
         }
       }
     } finally {
@@ -49,153 +74,259 @@ export default function AuthModalScreen() {
     }
   };
 
-  if (user) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Signed In</Text>
-          <Text style={styles.subtitle}>{user.email}</Text>
-          <TouchableOpacity
-            style={styles.signOutButton}
-            onPress={async () => {
-              await signOut();
-              router.back();
-            }}
-          >
-            <Text style={styles.signOutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{isLogin ? 'Sign In to Touchline' : 'Create an Account'}</Text>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scroll} bounces={false} keyboardShouldPersistTaps="handled">
+        {/* Green hero with curved bottom */}
+        <View style={styles.heroClip}>
+          <View style={[styles.hero, { paddingTop: Math.max(insets.top, 16) + 24 }]}>
+            <TouchableOpacity style={[styles.closeButton, { top: Math.max(insets.top, 16) }]} onPress={close}>
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
 
-        {!isLogin && (
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#9CA3AF"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-        )}
+            <View style={styles.logoWrap}>
+              <View style={styles.swoosh} />
+              <MaterialCommunityIcons name="soccer" size={84} color="#F4F4F4" />
+              <Ionicons name="star" size={12} color="#F4F4F4" style={styles.logoStar} />
+            </View>
+            <Text style={styles.brand}>TOUCHLINE SA</Text>
+            <Text style={styles.tagline}>Bringing Soccer Back to{'\n'}South Africa</Text>
+          </View>
+        </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email address"
-          placeholderTextColor="#9CA3AF"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#9CA3AF"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+        <View style={styles.body}>
+          {user ? (
+            <>
+              <Text style={styles.signedInText}>Signed in as</Text>
+              <Text style={styles.signedInEmail}>{user.email}</Text>
+              <TouchableOpacity style={styles.loginButton} onPress={close}>
+                <Text style={styles.loginText}>Continue</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => signOut()}>
+                <Text style={styles.footerText}>
+                  Not you? <Text style={styles.footerLink}>Sign Out</Text>
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
-            <Text style={styles.submitText}>{isLogin ? 'Sign In' : 'Create Account'}</Text>
-          )}
-        </TouchableOpacity>
+            <>
+              {mode === 'start' ? (
+                <>
+                  <PillButton label="Google Account" onPress={() => oauth('google')} />
+                  <PillButton label="Apple Account" onPress={() => oauth('apple')} />
+                  <PillButton label="Facebook Account" onPress={() => oauth('facebook')} />
+                </>
+              ) : (
+                <>
+                  {mode === 'register' && (
+                    <PillInput placeholder="Username" value={username} onChangeText={setUsername} />
+                  )}
+                  <PillInput placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" />
+                  <PillInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+                </>
+              )}
 
-        <TouchableOpacity onPress={() => setIsLogin(!isLogin)} style={styles.toggleRow}>
-          <Text style={styles.toggleText}>
-            {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+              {message ? (
+                <Text style={[styles.message, message.error ? styles.messageError : styles.messageOk]}>
+                  {message.text}
+                </Text>
+              ) : null}
+
+              <TouchableOpacity style={styles.loginButton} onPress={submit} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.loginText}>{mode === 'register' ? 'Register' : 'Login'}</Text>
+                )}
+              </TouchableOpacity>
+
+              {mode === 'register' ? (
+                <TouchableOpacity onPress={() => { setMode('login'); setMessage(null); }}>
+                  <Text style={styles.footerText}>
+                    Already have an account? <Text style={styles.footerLink}>Login Here</Text>
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => { setMode('register'); setMessage(null); }}>
+                  <Text style={styles.footerText}>
+                    Don’t have an account? <Text style={styles.footerLink}>Register Here</Text>
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {mode !== 'start' && (
+                <TouchableOpacity onPress={() => { setMode('start'); setMessage(null); }}>
+                  <Text style={[styles.footerText, { marginTop: 10 }]}>Other sign-in options</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function PillButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.pill} onPress={onPress}>
+      <Text style={styles.pillText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PillInput(props: React.ComponentProps<typeof TextInput>) {
+  return (
+    <TextInput
+      style={[styles.pill, styles.pillInput]}
+      placeholderTextColor="#2E7D46"
+      autoCapitalize="none"
+      {...props}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    padding: 20,
-    justifyContent: 'center',
-  },
-  card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
+  scroll: {
+    flexGrow: 1,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#4B5563',
-    marginBottom: 20,
-    textAlign: 'center',
+  heroClip: {
+    overflow: 'hidden',
+    borderBottomLeftRadius: 260,
+    borderBottomRightRadius: 260,
+    marginHorizontal: -120,
+    paddingHorizontal: 120,
+    backgroundColor: Brand.green,
   },
-  input: {
-    height: 48,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+  hero: {
+    alignItems: 'center',
+    paddingBottom: 56,
     paddingHorizontal: 16,
-    marginBottom: 12,
-    color: '#111827',
-    fontSize: 14,
   },
-  submitButton: {
-    backgroundColor: '#1E8E4F',
-    borderRadius: 12,
-    height: 48,
+  closeButton: {
+    position: 'absolute',
+    left: 16,
+    padding: 4,
+  },
+  logoWrap: {
+    width: 150,
+    height: 110,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
+  },
+  swoosh: {
+    position: 'absolute',
+    bottom: 10,
+    left: 4,
+    width: 120,
+    height: 40,
+    borderBottomWidth: 6,
+    borderLeftWidth: 2,
+    borderColor: '#1E6B35',
+    borderBottomLeftRadius: 60,
+    transform: [{ rotate: '-18deg' }],
+  },
+  logoStar: {
+    position: 'absolute',
+    left: 22,
+    bottom: 18,
+  },
+  brand: {
+    fontFamily: Fonts.display,
+    fontSize: 64,
+    lineHeight: 68,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  tagline: {
+    alignSelf: 'flex-end',
+    textAlign: 'right',
+    fontFamily: Fonts.bodySemi,
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#FFFFFF',
     marginTop: 8,
   },
-  submitText: {
-    color: '#FFFFFF',
+  body: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 32,
+    paddingBottom: 40,
+  },
+  pill: {
+    width: '100%',
+    maxWidth: 260,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#9C9C9C',
+    backgroundColor: '#E7E7E7',
+    paddingVertical: 6,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  pillText: {
+    fontFamily: Fonts.bodyMedium,
     fontSize: 15,
-    fontWeight: '800',
+    color: Brand.greenText,
   },
-  signOutButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: 12,
-    height: 44,
+  pillInput: {
+    textAlign: 'center',
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 15,
+    color: Brand.ink,
+    paddingVertical: 8,
+  },
+  loginButton: {
+    backgroundColor: Brand.green,
+    borderRadius: 24,
+    minWidth: 150,
+    paddingHorizontal: 28,
+    paddingVertical: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 14,
+    marginBottom: 18,
   },
-  signOutText: {
+  loginText: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 24,
     color: '#FFFFFF',
+  },
+  footerText: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Brand.ink,
+    textAlign: 'center',
+  },
+  footerLink: {
+    fontFamily: Fonts.bodySemi,
+    color: Brand.greenText,
+  },
+  message: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+    maxWidth: 260,
+  },
+  messageError: {
+    color: '#B91C1C',
+  },
+  messageOk: {
+    color: Brand.greenText,
+  },
+  signedInText: {
+    fontFamily: Fonts.body,
     fontSize: 14,
-    fontWeight: '700',
+    color: Brand.muted,
   },
-  toggleRow: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  toggleText: {
-    fontSize: 13,
-    color: '#1E8E4F',
-    fontWeight: '700',
+  signedInEmail: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 16,
+    color: Brand.ink,
+    marginTop: 4,
   },
 });

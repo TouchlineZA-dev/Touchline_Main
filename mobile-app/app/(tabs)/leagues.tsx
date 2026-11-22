@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
 export default function LeaguesScreen() {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 96 }]}>
       <View style={styles.banner}>
-        <Text style={styles.bannerText}>New features</Text>
-        <Text style={styles.bannerText}>coming soon</Text>
+        <Text style={styles.bannerText}>New features{'\n'}coming soon</Text>
       </View>
     </View>
   );
@@ -15,31 +17,27 @@ export default function LeaguesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E5E7EB', // Neutral grey from Figma
-    justifyContent: 'center',
+    backgroundColor: Brand.screen,
     alignItems: 'center',
-    padding: 24,
+    paddingHorizontal: 22,
   },
   banner: {
-    backgroundColor: '#48BB78', // Figma light emerald green box
-    borderRadius: 24,
-    paddingVertical: 36,
-    paddingHorizontal: 32,
+    backgroundColor: '#4CC274',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#7ED69A',
+    paddingVertical: 20,
+    paddingHorizontal: 18,
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 340,
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Shadow,
   },
   bannerText: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '900',
+    fontFamily: 'Lexend_600SemiBold',
+    color: '#D9F7E3',
+    fontSize: 24,
+    lineHeight: 30,
     textAlign: 'center',
-    lineHeight: 34,
   },
 });

@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api/client';
 import { useApi } from '@/src/lib/api/useApi';
 import { ApiFixture } from '@/src/lib/api/types';
 import { ScreenState } from '@/src/components/ScreenState';
+import { Crest, TitlePill } from '@/src/components/Common';
 import { buildTeamLookup, dayKey, formatDayHeader, formatKickoffTime, TeamLookup } from '@/src/lib/football';
+import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAST_DAYS = 3;
@@ -57,18 +58,7 @@ async function loadFixtures() {
   return { groups: groupByDay(selectFixtures(fixtures)), teams: buildTeamLookup(teams) };
 }
 
-function Crest({ teamId, teams, fallbackColor }: { teamId: number | null; teams: TeamLookup; fallbackColor: string }) {
-  const crest = teamId != null ? teams.get(teamId)?.crestUrl : null;
-  return (
-    <View style={styles.badgeCircle}>
-      {crest ? (
-        <Image source={{ uri: crest }} style={styles.crestImage} resizeMode="contain" />
-      ) : (
-        <Ionicons name="shield" size={28} color={fallbackColor} />
-      )}
-    </View>
-  );
-}
+const crestUrl = (teams: TeamLookup, id: number | null) => (id != null ? teams.get(id)?.crestUrl ?? null : null);
 
 export default function LiveGamesScreen() {
   const insets = useSafeAreaInsets();
@@ -76,16 +66,13 @@ export default function LiveGamesScreen() {
   const groups = data?.groups ?? [];
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 24 }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} />}
       >
-        {/* Top Header Pill */}
-        <View style={styles.titleBanner}>
-          <Text style={styles.titleBannerText}>Live Games</Text>
-        </View>
+        <TitlePill title="Live Games" style={{ marginBottom: 22 }} />
 
         {loading && !data ? (
           <ScreenState type="loading" light message="Loading fixtures..." />
@@ -96,40 +83,35 @@ export default function LiveGamesScreen() {
         ) : (
           groups.map((group) => (
             <View key={group.key} style={styles.dayGroup}>
-              {/* Green Date Header Pill */}
               <View style={styles.datePill}>
                 <Text style={styles.datePillText}>{group.dateHeader}</Text>
               </View>
 
-              {/* Match Cards */}
               {group.fixtures.map((match) => {
                 const started = match.status === 'Live' || match.status === 'Finished';
                 return (
                   <View key={match.id} style={styles.matchCard}>
-                    {/* Home Team */}
                     <View style={styles.teamCol}>
-                      <Text style={styles.teamNameText} numberOfLines={2}>
-                        {match.homeTeam}
-                      </Text>
-                      <Text style={styles.scoreText}>{started ? match.homeScore ?? 0 : '-'}</Text>
+                      <Text style={styles.teamNameText} numberOfLines={2}>{match.homeTeam}</Text>
+                      <Text style={styles.scoreText}>{started ? match.homeScore ?? 0 : 0}</Text>
                     </View>
 
-                    <Crest teamId={match.homeTeamId} teams={data!.teams} fallbackColor="#111827" />
+                    <View style={styles.crestCol}>
+                      <Crest name={match.homeTeam} url={crestUrl(data!.teams, match.homeTeamId)} size={40} />
+                    </View>
 
-                    {/* Middle Status Column */}
                     <View style={styles.centerCol}>
                       <Text style={styles.vsText}>VS</Text>
                       <Text style={[styles.timeText, match.status === 'Live' && styles.liveText]}>{statusLabel(match)}</Text>
                     </View>
 
-                    <Crest teamId={match.awayTeamId} teams={data!.teams} fallbackColor="#D97706" />
+                    <View style={styles.crestCol}>
+                      <Crest name={match.awayTeam} url={crestUrl(data!.teams, match.awayTeamId)} size={40} />
+                    </View>
 
-                    {/* Away Team */}
-                    <View style={[styles.teamCol, { alignItems: 'flex-start' }]}>
-                      <Text style={styles.teamNameText} numberOfLines={2}>
-                        {match.awayTeam}
-                      </Text>
-                      <Text style={styles.scoreText}>{started ? match.awayScore ?? 0 : '-'}</Text>
+                    <View style={styles.teamCol}>
+                      <Text style={styles.teamNameText} numberOfLines={2}>{match.awayTeam}</Text>
+                      <Text style={styles.scoreText}>{started ? match.awayScore ?? 0 : 0}</Text>
                     </View>
                   </View>
                 );
@@ -145,105 +127,78 @@ export default function LiveGamesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E5E7EB', // Soft grey background from Figma
+    backgroundColor: Brand.screen,
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 12,
     paddingBottom: 24,
   },
-  titleBanner: {
-    backgroundColor: '#32BA75',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  titleBannerText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-  },
   dayGroup: {
-    marginBottom: 16,
+    marginBottom: 4,
   },
   datePill: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#32BA75',
-    borderRadius: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Brand.green,
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
     alignSelf: 'flex-start',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   datePillText: {
-    color: '#065F46',
-    fontWeight: '800',
+    fontFamily: Fonts.bodyMedium,
+    color: Brand.greenText,
     fontSize: 12,
   },
   matchCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    ...Shadow,
   },
   teamCol: {
     flex: 1,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: 'center',
   },
   teamNameText: {
+    fontFamily: Fonts.body,
     fontSize: 12,
-    fontWeight: '800',
-    color: '#1F2937',
+    lineHeight: 15,
+    color: Brand.ink,
     textAlign: 'center',
   },
   scoreText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#4B5563',
-    marginTop: 4,
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: Brand.ink,
+    marginTop: 2,
   },
-  badgeCircle: {
+  crestCol: {
     width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
   },
-  crestImage: {
-    width: 30,
-    height: 30,
+  centerCol: {
+    width: 44,
+    alignItems: 'center',
+  },
+  vsText: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: Brand.inkSoft,
+  },
+  timeText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: Brand.inkSoft,
+    marginTop: 2,
   },
   liveText: {
     color: '#DC2626',
-    fontWeight: '900',
-  },
-  centerCol: {
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  vsText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#6B7280',
-  },
-  timeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#4B5563',
-    marginTop: 2,
+    fontFamily: Fonts.bodyBold,
   },
 });

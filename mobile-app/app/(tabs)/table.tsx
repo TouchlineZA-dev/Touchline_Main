@@ -1,70 +1,75 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api/client';
 import { useApi } from '@/src/lib/api/useApi';
 import { ScreenState } from '@/src/components/ScreenState';
+import { Crest, TitlePill } from '@/src/components/Common';
 import { buildTeamLookup, computeStandings } from '@/src/lib/football';
+import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
 async function loadTable() {
   const [{ season, fixtures }, { teams }] = await Promise.all([api.getFixtures(), api.getTeams()]);
   return { season, standings: computeStandings(fixtures, buildTeamLookup(teams)) };
 }
 
+const POS_COLORS: Record<number, { bg: string; fg: string }> = {
+  1: { bg: Brand.pos1, fg: '#0C4A6E' },
+  2: { bg: Brand.pos2, fg: '#1E3A8A' },
+  3: { bg: Brand.pos3, fg: '#134E4A' },
+};
+
 export default function TableScreen() {
   const insets = useSafeAreaInsets();
   const { data, error, loading, reload } = useApi(loadTable, []);
+  const seasonState = useApi(() => api.getCurrentSeason(), []);
+  const season = data?.season ?? seasonState.data;
+  const [seasonOpen, setSeasonOpen] = useState(false);
   const standings = data?.standings ?? [];
 
-  const getPositionBg = (pos: number) => {
-    if (pos === 1) return '#38BDF8'; // Light sky blue
-    if (pos === 2) return '#60A5FA'; // Medium blue
-    if (pos === 3) return '#34D399'; // Mint green
-    return '#E5E7EB'; // Neutral grey
-  };
-
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 40 }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} />}
       >
-        {/* Top Title Banner */}
-        <View style={styles.titleBanner}>
-          <Text style={styles.titleBannerText}>PSL Table</Text>
-        </View>
+        <TitlePill title="PSL Table" style={{ marginBottom: 10 }} />
 
-        {/* Current season from the API */}
-        {data?.season ? (
-          <View style={styles.seasonSelector}>
-            <Text style={styles.seasonText}>{data.season.name}</Text>
+        {/* Season dropdown: the API only exposes the current season. */}
+        {season ? (
+          <View style={styles.seasonWrap}>
+            <TouchableOpacity style={styles.seasonSelector} onPress={() => setSeasonOpen((o) => !o)}>
+              <Text style={styles.seasonText}>{season.name}</Text>
+              <Ionicons name={seasonOpen ? 'chevron-up' : 'chevron-down'} size={14} color={Brand.ink} />
+            </TouchableOpacity>
+            {seasonOpen ? (
+              <View style={styles.seasonMenu}>
+                <TouchableOpacity onPress={() => setSeasonOpen(false)}>
+                  <Text style={styles.seasonMenuItem}>{season.name}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
-        {/* Big White Table Card */}
         <View style={styles.tableCard}>
-          {/* Card Header */}
           <View style={styles.cardHeader}>
-            <Ionicons name="people-outline" size={24} color="#111827" />
+            <Ionicons name="people-outline" size={22} color={Brand.ink} />
             <View style={{ marginLeft: 8 }}>
               <Text style={styles.cardTitle}>PSL League Table</Text>
               <Text style={styles.cardSubtitle}>Current Premier Soccer League Standings</Text>
             </View>
           </View>
 
-          {/* Table Header Row */}
           <View style={styles.tableHeaderRow}>
-            <Text style={[styles.thText, { width: 36, textAlign: 'center' }]}>Pos</Text>
-            <Text style={[styles.thText, { flex: 1, paddingLeft: 8 }]}>Team Name</Text>
-            <Text style={[styles.thText, { width: 28, textAlign: 'center' }]}>P</Text>
-            <Text style={[styles.thText, { width: 36, textAlign: 'center' }]}>GD</Text>
-            <View style={styles.thDivider} />
-            <Text style={[styles.thText, { width: 44, textAlign: 'center' }]}>Pts</Text>
+            <Text style={[styles.thText, styles.posCol]}>Pos</Text>
+            <Text style={[styles.thText, styles.nameCol]}>Team Name</Text>
+            <View style={styles.vDivider} />
+            <Text style={[styles.thText, styles.ptsCol]}>Pts</Text>
           </View>
 
-          {/* Table Rows */}
           {loading && !data ? (
             <ScreenState type="loading" light message="Loading standings..." />
           ) : error ? (
@@ -72,39 +77,26 @@ export default function TableScreen() {
           ) : standings.length === 0 ? (
             <ScreenState type="empty" light message="No fixtures for this season yet." />
           ) : (
-            standings.map((team) => (
-              <View key={team.teamId ?? team.team} style={styles.tableRow}>
-                {/* Position Badge */}
-                <View style={[styles.posBadge, { backgroundColor: getPositionBg(team.position) }]}>
-                  <Text style={[styles.posText, team.position > 3 && { color: '#4B5563' }]}>{team.position}</Text>
+            standings.map((team) => {
+              const c = POS_COLORS[team.position] ?? { bg: Brand.posOther, fg: '#4B5563' };
+              return (
+                <View key={team.teamId ?? team.team} style={styles.tableRow}>
+                  <View style={styles.posCol}>
+                    <View style={[styles.posBadge, { backgroundColor: c.bg }]}>
+                      <Text style={[styles.posText, { color: c.fg }]}>{team.position}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.nameCol, styles.teamCell]}>
+                    <Crest name={team.team} url={team.crestUrl} size={22} />
+                    <Text style={styles.teamNameText} numberOfLines={2}>
+                      {team.team}
+                    </Text>
+                  </View>
+                  <View style={styles.vDivider} />
+                  <Text style={[styles.ptsCol, styles.ptsText]}>{team.points}</Text>
                 </View>
-
-                {/* Team Info */}
-                <View style={styles.teamInfoCol}>
-                  {team.crestUrl ? (
-                    <Image source={{ uri: team.crestUrl }} style={styles.crest} resizeMode="contain" />
-                  ) : (
-                    <Ionicons name="shield-outline" size={18} color="#059669" style={{ marginRight: 6 }} />
-                  )}
-                  <Text style={styles.teamNameText} numberOfLines={1}>
-                    {team.team}
-                  </Text>
-                </View>
-
-                <Text style={styles.statText}>{team.played}</Text>
-                <Text style={[styles.statText, { width: 36 }]}>
-                  {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
-                </Text>
-
-                {/* Vertical Divider */}
-                <View style={styles.rowDivider} />
-
-                {/* Points */}
-                <View style={styles.ptsCol}>
-                  <Text style={styles.ptsText}>{team.points}</Text>
-                </View>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -115,145 +107,142 @@ export default function TableScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E5E7EB', // Neutral light grey background from Figma
+    backgroundColor: Brand.screen,
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 18,
     paddingBottom: 24,
   },
-  titleBanner: {
-    backgroundColor: '#32BA75',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+  seasonWrap: {
     alignSelf: 'flex-start',
-    marginBottom: 12,
-  },
-  titleBannerText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
+    marginBottom: 10,
+    zIndex: 10,
   },
   seasonSelector: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#9C9C9C',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    gap: 18,
   },
   seasonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Brand.ink,
+  },
+  seasonMenu: {
+    position: 'absolute',
+    top: 30,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    ...Shadow,
+  },
+  seasonMenuItem: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Brand.ink,
+    paddingVertical: 4,
   },
   tableCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingTop: 16,
+    borderRadius: 10,
+    paddingTop: 12,
+    paddingBottom: 6,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Shadow,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingHorizontal: 14,
+    marginBottom: 14,
   },
   cardTitle: {
+    fontFamily: Fonts.heading,
     fontSize: 18,
-    fontWeight: '900',
-    color: '#111827',
+    color: Brand.ink,
   },
   cardSubtitle: {
-    fontSize: 11,
-    color: '#6B7280',
-    fontWeight: '600',
+    fontFamily: Fonts.body,
+    fontSize: 8,
+    color: Brand.muted,
   },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginHorizontal: 14,
     borderBottomWidth: 1,
-    borderTopWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#F9FAFB',
+    borderColor: Brand.line,
+    paddingBottom: 4,
   },
   thText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 11,
+    color: Brand.inkSoft,
   },
-  thDivider: {
+  posCol: {
+    width: 46,
+    alignItems: 'center',
+    textAlign: 'center',
+  },
+  nameCol: {
+    flex: 1,
+    paddingLeft: 6,
+  },
+  ptsCol: {
+    width: 40,
+    textAlign: 'center',
+  },
+  vDivider: {
     width: 1,
-    height: 16,
-    backgroundColor: '#E5E7EB',
+    alignSelf: 'stretch',
+    backgroundColor: Brand.line,
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    marginHorizontal: 14,
+    minHeight: 32,
     borderBottomWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: '#EFEFEF',
   },
   posBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
   },
   posText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#FFFFFF',
+    fontFamily: Fonts.bodySemi,
+    fontSize: 9,
   },
-  teamInfoCol: {
-    flex: 1,
+  teamCell: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 10,
+    gap: 8,
+    paddingVertical: 4,
   },
   teamNameText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  rowDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#E5E7EB',
-  },
-  crest: {
-    width: 20,
-    height: 20,
-    marginRight: 6,
-  },
-  statText: {
-    width: 28,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4B5563',
-  },
-  ptsCol: {
-    width: 44,
-    alignItems: 'center',
+    fontFamily: Fonts.bodySemi,
+    fontSize: 11,
+    lineHeight: 13,
+    color: Brand.ink,
+    flex: 1,
   },
   ptsText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#111827',
+    fontFamily: Fonts.bodySemi,
+    fontSize: 12,
+    color: Brand.ink,
   },
 });

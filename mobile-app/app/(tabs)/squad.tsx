@@ -7,20 +7,23 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
-  Image,
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { api, ApiError } from '@/src/lib/api/client';
 import { useApi } from '@/src/lib/api/useApi';
-import { Position, Snapshot } from '@/src/lib/api/types';
+import { Position, Snapshot, SquadPlayer } from '@/src/lib/api/types';
 import { useAuth } from '@/src/lib/auth/AuthContext';
 import { ScreenState } from '@/src/components/ScreenState';
-import { formatDateTime } from '@/src/lib/football';
+import { Crest } from '@/src/components/Common';
+import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
 type Tab = 'squad' | 'market' | 'leagues';
+
+const FORMATIONS = ['4-3-3', '4-4-2', '3-5-2', '3-4-3', '5-3-2'];
 
 interface GameweekStats {
   average: number | null;
@@ -70,11 +73,22 @@ export default function MySquadScreen() {
   const insets = useSafeAreaInsets();
   const { user, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('squad');
+  const [pitchSquad, setPitchSquad] = useState<SquadPlayer[] | null>(null);
+
+  if (pitchSquad) {
+    return <PickTeam players={pitchSquad} onBack={() => setPitchSquad(null)} />;
+  }
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
-      {/* Top Segmented Tabs: My Squad | Transfer Market | Leagues */}
-      <View style={styles.topTabs}>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#2A8C46', '#4DBE6C', '#8FE3A1']}
+        locations={[0, 0.55, 1]}
+        style={[styles.gradient, { paddingTop: Math.max(insets.top, 12) }]}
+      />
+
+      {/* Top segmented tabs */}
+      <View style={[styles.topTabs, { marginTop: Math.max(insets.top, 12) }]}>
         {([
           ['squad', 'My Squad'],
           ['market', 'Transfer Market'],
@@ -97,7 +111,12 @@ export default function MySquadScreen() {
       ) : !user ? (
         <SignedOut />
       ) : (
-        <ManagerTabs key={user.id} tab={activeTab} onOpenMarket={() => setActiveTab('market')} />
+        <ManagerTabs
+          key={user.id}
+          tab={activeTab}
+          onOpenMarket={() => setActiveTab('market')}
+          onPickTeam={(players) => setPitchSquad(players)}
+        />
       )}
     </View>
   );
@@ -105,17 +124,41 @@ export default function MySquadScreen() {
 
 function SignedOut() {
   return (
-    <View style={styles.scrollContent}>
-      <Text style={styles.welcomeTitle}>Welcome, Manager!</Text>
-      <Text style={styles.welcomeSubtitle}>Sign in to build your dream PSL squad.</Text>
-      <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/modal')}>
-        <Text style={styles.actionButtonText}>Sign In</Text>
-      </TouchableOpacity>
-    </View>
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      <Text style={styles.welcomeTitle}>Welcome, New Manager!</Text>
+      <Text style={styles.welcomeSubtitle}>Ready to build your dream PSL squad?</Text>
+      <View style={styles.managerCard}>
+        <Text style={styles.gwTitle}>Sign in to manage your squad</Text>
+        <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/modal')}>
+          <Text style={styles.actionButtonText}>Login</Text>
+        </TouchableOpacity>
+      </View>
+      <QuickNav />
+    </ScrollView>
   );
 }
 
-function ManagerTabs({ tab, onOpenMarket }: { tab: Exclude<Tab, 'market'>; onOpenMarket: () => void }) {
+function QuickNav() {
+  return (
+    <TouchableOpacity style={styles.quickNavCard} onPress={() => router.push('/live')}>
+      <View style={styles.quickNavLeft}>
+        <Text style={styles.quickNavText}>Player Statistics</Text>
+        <Text style={styles.quickNavText}>Fixtures and Results</Text>
+      </View>
+      <Ionicons name="arrow-forward" size={22} color={Brand.ink} />
+    </TouchableOpacity>
+  );
+}
+
+function ManagerTabs({
+  tab,
+  onOpenMarket,
+  onPickTeam,
+}: {
+  tab: Exclude<Tab, 'market'>;
+  onOpenMarket: () => void;
+  onPickTeam: (players: SquadPlayer[]) => void;
+}) {
   const { data, error, loading, reload } = useApi(loadManager, []);
 
   if (loading && !data) return <ScreenState type="loading" light message="Loading your team..." />;
@@ -130,6 +173,7 @@ function ManagerTabs({ tab, onOpenMarket }: { tab: Exclude<Tab, 'market'>; onOpe
         <Text style={styles.welcomeTitle}>Welcome, {data.displayName}!</Text>
         <Text style={styles.welcomeSubtitle}>Ready to build your dream PSL squad?</Text>
         <CreateTeam onCreated={reload} />
+        <QuickNav />
       </ScrollView>
     );
   }
@@ -144,6 +188,7 @@ function ManagerTabs({ tab, onOpenMarket }: { tab: Exclude<Tab, 'market'>; onOpe
         ) : (
           snapshot.leagues.map((l) => (
             <View key={l.id} style={styles.listCard}>
+              <Ionicons name="trophy-outline" size={22} color={Brand.greenText} style={{ marginRight: 10 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.listTitle}>{l.name}</Text>
                 <Text style={styles.listSubtitle}>
@@ -165,27 +210,21 @@ function ManagerTabs({ tab, onOpenMarket }: { tab: Exclude<Tab, 'market'>; onOpe
 
   const latest = snapshot.latestPoints;
   const next = snapshot.team.nextGameweek;
+  const squadPlayers = snapshot.squad?.players ?? [];
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={refresh}>
-      {/* Welcome Back Header */}
       <Text style={styles.welcomeTitle}>Welcome Back, {data.displayName}!</Text>
-      <Text style={styles.welcomeSubtitle}>
-        Budget {money(snapshot.team.budgetRemaining)} · Squad value {money(snapshot.team.squadValue)}
-      </Text>
+      <Text style={styles.welcomeSubtitle}>Ready to build your dream PSL squad?</Text>
 
-      {/* Big Dark Emerald Card */}
       <View style={styles.managerCard}>
-        {/* Team Name Header */}
         <View style={styles.teamHeaderRow}>
-          <View style={styles.teamTitleLeft}>
-            <Ionicons name="trophy-outline" size={24} color="#FFFFFF" />
-            <Text style={styles.teamNameText}>{snapshot.team.name}</Text>
-          </View>
+          <Ionicons name="trophy-outline" size={22} color="#FFFFFF" />
+          <Text style={styles.teamNameText} numberOfLines={1}>{snapshot.team.name}</Text>
+          <Ionicons name="pencil" size={16} color="#FFFFFF" />
         </View>
         <View style={styles.divider} />
 
-        {/* Latest gameweek scores */}
         {latest ? (
           <>
             <Text style={styles.gwTitle}>
@@ -197,55 +236,46 @@ function ManagerTabs({ tab, onOpenMarket }: { tab: Exclude<Tab, 'market'>; onOpe
                 <Text style={styles.statValue}>{fmt(stats.average)}</Text>
                 <Text style={styles.statLabel}>Average</Text>
               </View>
-
-              <View style={styles.statBoxCenter}>
+              <View style={styles.statBox}>
                 <Text style={styles.statValueBig}>{latest.total}</Text>
-                <Text style={styles.statLabelBig}>Points</Text>
+                <View style={styles.statWithArrow}>
+                  <Text style={styles.statLabel}>Points</Text>
+                  <Ionicons name="arrow-forward" size={10} color="#FFFFFF" />
+                </View>
               </View>
-
               <View style={styles.statBox}>
                 <Text style={styles.statValue}>{fmt(stats.highest)}</Text>
-                <Text style={styles.statLabel}>Highest</Text>
+                <View style={styles.statWithArrow}>
+                  <Text style={styles.statLabel}>Highest</Text>
+                  <Ionicons name="arrow-forward" size={10} color="#FFFFFF" />
+                </View>
               </View>
             </View>
           </>
         ) : (
-          <Text style={styles.gwTitle}>No gameweek points yet</Text>
+          <Text style={[styles.gwTitle, { marginBottom: 4 }]}>No gameweek points yet</Text>
         )}
         <View style={styles.divider} />
 
-        {/* Next gameweek actions */}
-        {next ? (
-          <>
-            <Text style={styles.gwTitle}>{next.name}</Text>
-            {snapshot.deadline ? (
-              <Text style={styles.deadlineText}>Deadline {formatDateTime(snapshot.deadline)}</Text>
-            ) : null}
-          </>
-        ) : (
-          <Text style={styles.gwTitle}>No upcoming gameweek</Text>
-        )}
-
-        {snapshot.squad ? (
+        <Text style={styles.gwTitle}>{next ? next.name : 'No upcoming gameweek'}</Text>
+        {snapshot.deadline ? (
           <Text style={styles.deadlineText}>
-            {snapshot.squad.players.length} players
-            {snapshot.squad.formation ? ` · ${snapshot.squad.formation}` : ''}
+            Deadline {new Date(snapshot.deadline).toLocaleString('en-ZA', {
+              weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+            })}
             {snapshot.freeTransfersLeft != null ? ` · ${snapshot.freeTransfersLeft} free transfers` : ''}
           </Text>
         ) : null}
 
+        <TouchableOpacity style={styles.actionButton} onPress={() => onPickTeam(squadPlayers)}>
+          <Text style={styles.actionButtonText}>Pick Team</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={onOpenMarket}>
-          <Text style={styles.actionButtonText}>{snapshot.squad?.players.length ? 'Transfers' : 'Pick Team'}</Text>
+          <Text style={styles.actionButtonText}>Transfers</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Bottom Light Green Quick Nav Bar */}
-      <TouchableOpacity style={styles.quickNavCard} onPress={() => router.push('/live')}>
-        <View style={styles.quickNavLeft}>
-          <Text style={styles.quickNavText}>Fixtures and Results</Text>
-        </View>
-        <Ionicons name="arrow-forward" size={20} color="#1E8E4F" />
-      </TouchableOpacity>
+      <QuickNav />
     </ScrollView>
   );
 }
@@ -271,7 +301,11 @@ function CreateTeam({ onCreated }: { onCreated: () => void }) {
 
   return (
     <View style={styles.managerCard}>
-      <Text style={styles.gwTitle}>Create your team</Text>
+      <View style={styles.teamHeaderRow}>
+        <Ionicons name="trophy-outline" size={22} color="#FFFFFF" />
+        <Text style={styles.teamNameText}>Create your team</Text>
+      </View>
+      <View style={styles.divider} />
       <TextInput
         style={styles.input}
         placeholder="Team name"
@@ -287,6 +321,112 @@ function CreateTeam({ onCreated }: { onCreated: () => void }) {
     </View>
   );
 }
+
+// ---- Pick Team (pitch view) ----------------------------------------------------------------
+
+function PickTeam({ players, onBack }: { players: SquadPlayer[]; onBack: () => void }) {
+  const insets = useSafeAreaInsets();
+  const starters = players.filter((p) => p.isStarter);
+  const bench = players.filter((p) => !p.isStarter).sort((a, b) => (a.benchOrder ?? 99) - (b.benchOrder ?? 99));
+  const initial = FORMATIONS.find((f) => f === inferFormation(starters)) ?? FORMATIONS[0];
+  const [formation, setFormation] = useState(initial);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [def, mid, att] = formation.split('-').map(Number);
+  const byPos = (pos: Position) => starters.filter((p) => p.position === pos);
+  const rows: { pos: Position; count: number }[] = [
+    { pos: 'GK', count: 1 },
+    { pos: 'DEF', count: def },
+    { pos: 'MID', count: mid },
+    { pos: 'ATT', count: att },
+  ];
+
+  return (
+    <View style={[styles.pitchScreen, { paddingTop: Math.max(insets.top, 12) }]}>
+      <View style={styles.pitchToolbar}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={22} color={Brand.ink} />
+        </TouchableOpacity>
+        <View style={{ zIndex: 10 }}>
+          <TouchableOpacity style={styles.formationSelect} onPress={() => setMenuOpen((o) => !o)}>
+            <Text style={styles.formationText}>{menuOpen ? 'Formations' : formation}</Text>
+            <Ionicons name={menuOpen ? 'chevron-up' : 'chevron-down'} size={14} color={Brand.ink} />
+          </TouchableOpacity>
+          {menuOpen ? (
+            <View style={styles.formationMenu}>
+              {FORMATIONS.map((f) => (
+                <TouchableOpacity key={f} onPress={() => { setFormation(f); setMenuOpen(false); }}>
+                  <Text style={[styles.formationMenuItem, f === formation && { fontFamily: Fonts.bodyBold }]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Pitch */}
+      <View style={styles.pitch}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <View key={i} style={[styles.stripe, { backgroundColor: i % 2 ? Brand.pitchB : Brand.pitchA }]} />
+        ))}
+        <View style={styles.pitchLines} pointerEvents="none">
+          <View style={styles.penaltyBox} />
+          <View style={styles.goalBox} />
+          <View style={styles.halfLine} />
+          <View style={styles.centerCircle} />
+        </View>
+        <View style={styles.pitchRows}>
+          {rows.map(({ pos, count }) => {
+            const inPos = byPos(pos);
+            return (
+              <View key={pos} style={styles.pitchRow}>
+                {Array.from({ length: count }).map((_, i) => (
+                  <PlayerSlot key={i} player={inPos[i]} />
+                ))}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Bench */}
+      <View style={styles.benchEdge} />
+      <View style={styles.bench}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <PlayerSlot key={i} player={bench[i]} />
+        ))}
+      </View>
+
+      {players.length === 0 ? (
+        <Text style={styles.pitchHint}>Your squad is empty. Use Transfers to buy players.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function inferFormation(starters: SquadPlayer[]) {
+  const n = (p: Position) => starters.filter((s) => s.position === p).length;
+  return `${n('DEF')}-${n('MID')}-${n('ATT')}`;
+}
+
+function PlayerSlot({ player }: { player?: SquadPlayer }) {
+  return (
+    <View style={styles.slotWrap}>
+      <View style={styles.slot}>
+        {player ? <Crest name={player.club} size={26} /> : null}
+        {player?.isCaptain ? <Text style={styles.captainBadge}>C</Text> : null}
+        {player?.isViceCaptain ? <Text style={styles.captainBadge}>V</Text> : null}
+      </View>
+      {player ? (
+        <Text style={styles.slotName} numberOfLines={1}>
+          {player.name.split(' ').slice(-1)[0]}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+// ---- Transfer market -----------------------------------------------------------------------
 
 const POSITIONS: (Position | 'ALL')[] = ['ALL', 'GK', 'DEF', 'MID', 'ATT'];
 
@@ -314,9 +454,9 @@ function MarketTab() {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} />}
     >
       <TextInput
-        style={[styles.input, styles.searchInput]}
+        style={styles.searchInput}
         placeholder="Search players or clubs"
-        placeholderTextColor="#6B7280"
+        placeholderTextColor={Brand.muted}
         value={query}
         onChangeText={setQuery}
       />
@@ -333,11 +473,9 @@ function MarketTab() {
       ) : (
         players.map((p) => (
           <View key={p.id} style={styles.listCard}>
-            {p.teamCrest ? (
-              <Image source={{ uri: p.teamCrest }} style={styles.listCrest} resizeMode="contain" />
-            ) : (
-              <Ionicons name="person-circle-outline" size={28} color="#1E8E4F" style={{ marginRight: 10 }} />
-            )}
+            <View style={{ marginRight: 10 }}>
+              <Crest name={p.team} url={p.teamCrest} size={28} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.listTitle} numberOfLines={1}>{p.name}</Text>
               <Text style={styles.listSubtitle} numberOfLines={1}>
@@ -355,244 +493,421 @@ function MarketTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#38A169', // Gradient green background from Figma
+    backgroundColor: Brand.screen,
+  },
+  gradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 420,
   },
   topTabs: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    alignItems: 'center',
+    backgroundColor: '#22773D',
+    marginHorizontal: 8,
+    borderRadius: 6,
+    padding: 4,
+    marginBottom: 8,
+    ...Shadow,
   },
   topTabButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
   },
   topTabButtonActive: {
     backgroundColor: '#FFFFFF',
   },
   topTabText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 12,
     color: '#FFFFFF',
   },
   topTabTextActive: {
-    color: '#1E8E4F',
+    color: Brand.greenText,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     paddingBottom: 24,
   },
   welcomeTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#111827',
-    fontFamily: 'System',
-    marginBottom: 4,
+    fontFamily: Fonts.heading,
+    fontSize: 22,
+    lineHeight: 28,
+    color: Brand.ink,
+    paddingHorizontal: 6,
   },
   welcomeSubtitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 16,
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 11,
+    color: Brand.ink,
+    paddingHorizontal: 6,
+    marginBottom: 8,
   },
   managerCard: {
-    backgroundColor: '#1E6F3E', // Deep green from Figma card
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: Brand.greenDark,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#4FBF70',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 28,
+    ...Shadow,
   },
   teamHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  teamTitleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   teamNameText: {
-    fontSize: 20,
-    fontWeight: '900',
+    fontFamily: Fonts.heading,
+    fontSize: 18,
     color: '#FFFFFF',
-  },
-  editButton: {
-    padding: 4,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    marginVertical: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    marginVertical: 8,
+    marginHorizontal: 4,
   },
   gwTitle: {
+    fontFamily: Fonts.heading,
     textAlign: 'center',
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 12,
+    fontSize: 15,
+    marginBottom: 6,
+  },
+  deadlineText: {
+    fontFamily: Fonts.bodyMedium,
+    textAlign: 'center',
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 10,
+    marginTop: -2,
+    marginBottom: 8,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-end',
+    marginBottom: 4,
   },
   statBox: {
     alignItems: 'center',
   },
-  statBoxCenter: {
-    alignItems: 'center',
-  },
   statValue: {
-    fontSize: 32,
-    fontWeight: '900',
+    fontFamily: Fonts.headingBold,
+    fontSize: 30,
+    lineHeight: 36,
     color: '#FFFFFF',
-    lineHeight: 38,
   },
   statValueBig: {
+    fontFamily: Fonts.headingBold,
     fontSize: 44,
-    fontWeight: '900',
-    color: '#FFFFFF',
     lineHeight: 50,
+    color: '#FFFFFF',
   },
   statLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.85)',
-  },
-  statLabelBig: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 10,
     color: '#FFFFFF',
   },
   statWithArrow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   actionButton: {
-    backgroundColor: '#16572F', // Dark action pill
-    borderRadius: 24,
-    paddingVertical: 12,
+    backgroundColor: Brand.greenDeep,
+    borderRadius: 14,
+    paddingVertical: 4,
     alignItems: 'center',
+    alignSelf: 'center',
+    width: '72%',
     marginBottom: 10,
   },
   actionButtonText: {
+    fontFamily: Fonts.bodyMedium,
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 13,
   },
   quickNavCard: {
-    backgroundColor: '#9AE6B4', // Soft mint green
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: Brand.mint,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginHorizontal: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    ...Shadow,
   },
   quickNavLeft: {
-    gap: 4,
+    gap: 14,
   },
   quickNavText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#064E3B',
-  },
-  deadlineText: {
-    textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: -6,
-    marginBottom: 12,
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 13,
+    color: '#1E3A28',
   },
   input: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: '#FFFFFF',
-    color: '#111827',
-  },
-  errorText: {
-    color: '#FEE2E2',
-    fontSize: 12,
-    fontWeight: '700',
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 14,
     marginBottom: 10,
     textAlign: 'center',
   },
+  errorText: {
+    fontFamily: Fonts.bodySemi,
+    color: '#FEE2E2',
+    fontSize: 11,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  searchInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: Brand.ink,
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    marginBottom: 8,
+  },
   pillRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 10,
   },
   pill: {
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
   },
   pillActive: {
     backgroundColor: '#FFFFFF',
   },
   pillText: {
+    fontFamily: Fonts.bodySemi,
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
   },
   pillTextActive: {
-    color: '#1E8E4F',
+    color: Brand.greenText,
   },
   listCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 8,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
-  },
-  listCrest: {
-    width: 28,
-    height: 28,
-    marginRight: 10,
+    ...Shadow,
   },
   listTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#111827',
+    fontFamily: Fonts.bodySemi,
+    fontSize: 13,
+    color: Brand.ink,
   },
   listSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginTop: 2,
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Brand.muted,
+    marginTop: 1,
   },
   priceText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#1E6F3E',
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Brand.greenText,
   },
   rankBox: {
     alignItems: 'center',
     minWidth: 48,
   },
   rankValue: {
+    fontFamily: Fonts.headingBold,
     fontSize: 20,
-    fontWeight: '900',
-    color: '#1E6F3E',
+    color: Brand.greenText,
   },
   rankLabel: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: Brand.muted,
+  },
+
+  // Pick team
+  pitchScreen: {
+    flex: 1,
+    backgroundColor: Brand.screen,
+  },
+  pitchToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginTop: 110,
+    marginBottom: 6,
+    zIndex: 10,
+  },
+  backButton: {
+    padding: 4,
+  },
+  formationSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#9C9C9C',
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  formationText: {
+    fontFamily: Fonts.body,
     fontSize: 11,
-    fontWeight: '700',
-    color: '#6B7280',
+    color: Brand.ink,
+  },
+  formationMenu: {
+    position: 'absolute',
+    top: 28,
+    right: 0,
+    left: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    ...Shadow,
+  },
+  formationMenuItem: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Brand.ink,
+    paddingVertical: 4,
+  },
+  pitch: {
+    height: 360,
+    overflow: 'hidden',
+  },
+  stripe: {
+    flex: 1,
+  },
+  pitchLines: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+    borderTopWidth: 0,
+  },
+  penaltyBox: {
+    position: 'absolute',
+    top: 0,
+    left: '22%',
+    right: '22%',
+    height: 64,
+    borderWidth: 2,
+    borderTopWidth: 0,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  goalBox: {
+    position: 'absolute',
+    top: 0,
+    left: '38%',
+    right: '38%',
+    height: 24,
+    borderWidth: 2,
+    borderTopWidth: 0,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  halfLine: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  centerCircle: {
+    position: 'absolute',
+    bottom: -40,
+    alignSelf: 'center',
+    left: '50%',
+    marginLeft: -40,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  pitchRows: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+  },
+  pitchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+  },
+  slotWrap: {
+    alignItems: 'center',
+    width: 56,
+  },
+  slot: {
+    width: 36,
+    height: 42,
+    backgroundColor: Brand.slot,
+    borderRadius: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotName: {
+    fontFamily: Fonts.bodySemi,
+    fontSize: 9,
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 3,
+    marginTop: 2,
+    borderRadius: 2,
+    maxWidth: 56,
+  },
+  captainBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Brand.ink,
+    color: '#FFFFFF',
+    fontFamily: Fonts.bodyBold,
+    fontSize: 8,
+    textAlign: 'center',
+    lineHeight: 14,
+    overflow: 'hidden',
+  },
+  benchEdge: {
+    height: 10,
+    backgroundColor: Brand.benchEdge,
+  },
+  bench: {
+    backgroundColor: Brand.benchWood,
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    paddingVertical: 10,
+  },
+  pitchHint: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 12,
+    color: Brand.inkSoft,
+    textAlign: 'center',
+    marginTop: 14,
+    paddingHorizontal: 16,
   },
 });
