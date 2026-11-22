@@ -52,6 +52,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/v1/fantasy/*"
+  to = "/.netlify/functions/fantasy/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/privacy"
   to = "/privacy.html"
   status = 200
