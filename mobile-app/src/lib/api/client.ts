@@ -4,16 +4,34 @@ import {
   ApiArticle,
   ApiFixture,
   ApiPlayer,
-  ApiStanding,
-  FantasyLeague,
+  ApiTeam,
   FantasyTeam,
-  LeagueStanding,
-  SaveTeamPayload,
+  Gameweek,
+  LeagueStandings,
+  LeagueSummary,
+  Me,
+  NewsCategory,
+  Season,
+  SeasonRef,
+  Snapshot,
+  Squad,
+  SquadRequest,
+  TeamPoints,
 } from './types';
 
-class ApiClient {
-  private baseUrl = AppConfig.apiBaseUrl;
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
+interface RequestOptions extends RequestInit {
+  auth?: boolean;
+  baseUrl?: string;
+}
+
+class ApiClient {
   private async getAuthToken(): Promise<string | null> {
     try {
       const { data } = await supabase.auth.getSession();
@@ -23,93 +41,135 @@ class ApiClient {
     }
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const token = await this.getAuthToken();
+  private async request<T>(path: string, { auth = false, baseUrl = AppConfig.apiBaseUrl, ...options }: RequestOptions = {}): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> || {}),
+      Accept: 'application/json',
+      ...((options.headers as Record<string, string>) || {}),
     };
+    if (options.body) headers['Content-Type'] = 'application/json';
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (auth) {
+      const token = await this.getAuthToken();
+      if (!token) throw new ApiError('Sign in to continue.', 401);
+      headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers,
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AppConfig.requestTimeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}${path}`, { ...options, headers, signal: controller.signal });
+    } catch (e) {
+      const aborted = (e as Error)?.name === 'AbortError';
+      throw new ApiError(
+        aborted ? 'The server took too long to respond.' : `Can't reach the server at ${baseUrl}.`,
+        0,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
-      let errorMessage = `Request failed (${response.status})`;
+      let message = `Request failed (${response.status})`;
       try {
-        const errorData = await response.json();
-        if (errorData?.error) errorMessage = errorData.error;
+        // ASP.NET returns ProblemDetails ({ title, detail }); the news service returns { error }.
+        const body = await response.json();
+        message = body?.detail || body?.error?.message || body?.error || body?.title || message;
       } catch {
-        // Fallback to generic message
+        // keep generic message
       }
-      throw new Error(errorMessage);
+      throw new ApiError(String(message), response.status);
     }
 
+    if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
 
-  // --- Public Football Endpoints ---
-  async getNews(max = 20): Promise<{ articles: ApiArticle[] }> {
-    return this.request<{ articles: ApiArticle[] }>(`/news/headlines?max=${max}`);
+  // --- Public football endpoints ---
+  getCurrentSeason() {
+    return this.request<Season>('/seasons/current');
   }
 
-  async getPlayers(): Promise<{ players: ApiPlayer[] }> {
-    return this.request<{ players: ApiPlayer[] }>('/players');
+  getTeams() {
+    return this.request<{ count: number; teams: ApiTeam[] }>('/teams');
   }
 
-  async getFixtures(): Promise<{ fixtures: ApiFixture[] }> {
-    return this.request<{ fixtures: ApiFixture[] }>('/fixtures');
+  getPlayers() {
+    return this.request<{ season: SeasonRef; count: number; players: ApiPlayer[] }>('/players');
   }
 
-  async getStandings(): Promise<{ standings: ApiStanding[] }> {
-    return this.request<{ standings: ApiStanding[] }>('/standings');
+  getFixtures(range: { from?: Date; to?: Date } = {}) {
+    const params = new URLSearchParams();
+    if (range.from) params.set('from', range.from.toISOString());
+    if (range.to) params.set('to', range.to.toISOString());
+    const qs = params.toString();
+    return this.request<{ season: SeasonRef; count: number; fixtures: ApiFixture[] }>(`/fixtures${qs ? `?${qs}` : ''}`);
   }
 
-  // --- Authenticated Fantasy Endpoints (ASP.NET API) ---
-  async getFantasyTeam(): Promise<{ team: FantasyTeam | null }> {
-    return this.request<{ team: FantasyTeam | null }>('/fantasy/team');
+  getGameweeks(seasonId?: number) {
+    return this.request<{ count: number; gameweeks: Gameweek[] }>(`/gameweeks${seasonId ? `?seasonId=${seasonId}` : ''}`);
   }
 
-  async saveFantasyTeam(payload: SaveTeamPayload): Promise<{ team: FantasyTeam }> {
-    return this.request<{ team: FantasyTeam }>('/fantasy/team', {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
+  // --- News service ---
+  getNews(opts: { limit?: number; category?: string } = {}) {
+    const params = new URLSearchParams({ limit: String(opts.limit ?? 20) });
+    if (opts.category) params.set('category', opts.category);
+    return this.request<{ articles: ApiArticle[] }>(`/news?${params}`, { baseUrl: AppConfig.newsApiBaseUrl });
   }
 
-  async activateChip(chip: string): Promise<{ team: FantasyTeam }> {
-    return this.request<{ team: FantasyTeam }>('/fantasy/chip', {
-      method: 'POST',
-      body: JSON.stringify({ chip }),
-    });
+  getNewsCategories() {
+    return this.request<{ categories: NewsCategory[] }>('/categories', { baseUrl: AppConfig.newsApiBaseUrl });
   }
 
-  async getMyLeagues(): Promise<{ leagues: FantasyLeague[] }> {
-    return this.request<{ leagues: FantasyLeague[] }>('/fantasy/leagues');
+  // --- Authenticated endpoints ---
+  getMe() {
+    return this.request<Me>('/me', { auth: true });
   }
 
-  async createLeague(name: string): Promise<{ league: FantasyLeague }> {
-    return this.request<{ league: FantasyLeague }>('/fantasy/leagues', {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    });
+  getFantasyTeam() {
+    return this.request<FantasyTeam>('/fantasy/team', { auth: true });
   }
 
-  async joinLeague(code: string): Promise<{ membership: any }> {
-    return this.request<{ membership: any }>('/fantasy/leagues/join', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    });
+  createFantasyTeam(name: string) {
+    return this.request<FantasyTeam>('/fantasy/team', { auth: true, method: 'POST', body: JSON.stringify({ name }) });
   }
 
-  async getLeagueStandings(leagueId: string, gameweek?: number): Promise<{ standings: LeagueStanding[] }> {
+  getSnapshot() {
+    return this.request<Snapshot>('/fantasy/team/snapshot', { auth: true });
+  }
+
+  getSquad(gameweek?: number) {
+    return this.request<Squad>(`/fantasy/team/squad${gameweek ? `?gameweek=${gameweek}` : ''}`, { auth: true });
+  }
+
+  saveSquad(payload: SquadRequest) {
+    return this.request<Squad>('/fantasy/team/squad', { auth: true, method: 'PUT', body: JSON.stringify(payload) });
+  }
+
+  getPoints(gameweek?: number) {
+    return this.request<TeamPoints>(`/fantasy/team/points${gameweek ? `?gameweek=${gameweek}` : ''}`, { auth: true });
+  }
+
+  activateChip(chip: string, gameweek?: number) {
+    return this.request<Squad>('/fantasy/team/chips', { auth: true, method: 'POST', body: JSON.stringify({ chip, gameweek }) });
+  }
+
+  getMyLeagues() {
+    return this.request<LeagueSummary[]>('/fantasy/leagues', { auth: true });
+  }
+
+  createLeague(name: string) {
+    return this.request<LeagueSummary>('/fantasy/leagues', { auth: true, method: 'POST', body: JSON.stringify({ name }) });
+  }
+
+  joinLeague(code: string) {
+    return this.request<LeagueSummary>('/fantasy/leagues/join', { auth: true, method: 'POST', body: JSON.stringify({ code }) });
+  }
+
+  getLeagueStandings(leagueId: string, gameweek?: number) {
     const query = gameweek ? `?gameweek=${gameweek}` : '';
-    return this.request<{ standings: LeagueStanding[] }>(`/fantasy/leagues/${leagueId}/standings${query}`);
+    return this.request<LeagueStandings>(`/fantasy/leagues/${encodeURIComponent(leagueId)}/standings${query}`, { auth: true });
   }
 }
 

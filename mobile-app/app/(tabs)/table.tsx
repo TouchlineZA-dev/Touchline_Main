@@ -1,55 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api/client';
-import { ApiStanding } from '@/src/lib/api/types';
+import { useApi } from '@/src/lib/api/useApi';
+import { ScreenState } from '@/src/components/ScreenState';
+import { buildTeamLookup, computeStandings } from '@/src/lib/football';
+
+async function loadTable() {
+  const [{ season, fixtures }, { teams }] = await Promise.all([api.getFixtures(), api.getTeams()]);
+  return { season, standings: computeStandings(fixtures, buildTeamLookup(teams)) };
+}
 
 export default function TableScreen() {
   const insets = useSafeAreaInsets();
-  const [standings, setStandings] = useState<ApiStanding[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadStandings();
-  }, []);
-
-  const loadStandings = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getStandings();
-      if (res.standings && res.standings.length > 0) {
-        setStandings(res.standings);
-      } else {
-        setFallbackStandings();
-      }
-    } catch {
-      setFallbackStandings();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const setFallbackStandings = () => {
-    setStandings([
-      { position: 1, team: 'Kaizer Chiefs', played: 2, won: 2, drawn: 0, lost: 0, goalsFor: 4, goalsAgainst: 1, goalDifference: 3, points: 6 },
-      { position: 2, team: 'Orlando Pirates F.C.', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 3, goalsAgainst: 1, goalDifference: 2, points: 4 },
-      { position: 3, team: 'Stellenbosch', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 2, goalsAgainst: 1, goalDifference: 1, points: 4 },
-      { position: 4, team: 'Polokwane City F.C.', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 2, goalsAgainst: 1, goalDifference: 1, points: 4 },
-      { position: 5, team: 'Amazulu F.C.', played: 2, won: 1, drawn: 1, lost: 0, goalsFor: 1, goalsAgainst: 0, goalDifference: 1, points: 4 },
-      { position: 6, team: 'Mamelodi Sundowns', played: 2, won: 1, drawn: 0, lost: 1, goalsFor: 3, goalsAgainst: 2, goalDifference: 1, points: 3 },
-      { position: 7, team: 'Milford', played: 2, won: 1, drawn: 0, lost: 1, goalsFor: 1, goalsAgainst: 1, goalDifference: 0, points: 3 },
-      { position: 8, team: 'Sekhukhune', played: 2, won: 1, drawn: 0, lost: 1, goalsFor: 1, goalsAgainst: 2, goalDifference: -1, points: 3 },
-      { position: 9, team: 'Chippa United F.C.', played: 2, won: 0, drawn: 2, lost: 0, goalsFor: 2, goalsAgainst: 2, goalDifference: 0, points: 2 },
-    ]);
-  };
+  const { data, error, loading, reload } = useApi(loadTable, []);
+  const standings = data?.standings ?? [];
 
   const getPositionBg = (pos: number) => {
     if (pos === 1) return '#38BDF8'; // Light sky blue
@@ -60,17 +26,22 @@ export default function TableScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} />}
+      >
         {/* Top Title Banner */}
         <View style={styles.titleBanner}>
           <Text style={styles.titleBannerText}>PSL Table</Text>
         </View>
 
-        {/* Season Selector Dropdown pill */}
-        <TouchableOpacity style={styles.seasonSelector}>
-          <Text style={styles.seasonText}>2026/2027</Text>
-          <Ionicons name="chevron-down" size={16} color="#374151" />
-        </TouchableOpacity>
+        {/* Current season from the API */}
+        {data?.season ? (
+          <View style={styles.seasonSelector}>
+            <Text style={styles.seasonText}>{data.season.name}</Text>
+          </View>
+        ) : null}
 
         {/* Big White Table Card */}
         <View style={styles.tableCard}>
@@ -87,30 +58,43 @@ export default function TableScreen() {
           <View style={styles.tableHeaderRow}>
             <Text style={[styles.thText, { width: 36, textAlign: 'center' }]}>Pos</Text>
             <Text style={[styles.thText, { flex: 1, paddingLeft: 8 }]}>Team Name</Text>
+            <Text style={[styles.thText, { width: 28, textAlign: 'center' }]}>P</Text>
+            <Text style={[styles.thText, { width: 36, textAlign: 'center' }]}>GD</Text>
             <View style={styles.thDivider} />
             <Text style={[styles.thText, { width: 44, textAlign: 'center' }]}>Pts</Text>
           </View>
 
           {/* Table Rows */}
-          {loading ? (
-            <ActivityIndicator size="large" color="#1E8E4F" style={{ padding: 32 }} />
+          {loading && !data ? (
+            <ScreenState type="loading" light message="Loading standings..." />
+          ) : error ? (
+            <ScreenState type="error" light message={error.message} onRetry={reload} />
+          ) : standings.length === 0 ? (
+            <ScreenState type="empty" light message="No fixtures for this season yet." />
           ) : (
             standings.map((team) => (
-              <View key={team.position} style={styles.tableRow}>
+              <View key={team.teamId ?? team.team} style={styles.tableRow}>
                 {/* Position Badge */}
                 <View style={[styles.posBadge, { backgroundColor: getPositionBg(team.position) }]}>
-                  <Text style={[styles.posText, team.position > 3 && { color: '#4B5563' }]}>
-                    {team.position}
-                  </Text>
+                  <Text style={[styles.posText, team.position > 3 && { color: '#4B5563' }]}>{team.position}</Text>
                 </View>
 
                 {/* Team Info */}
                 <View style={styles.teamInfoCol}>
-                  <Ionicons name="shield-outline" size={18} color="#059669" style={{ marginRight: 6 }} />
+                  {team.crestUrl ? (
+                    <Image source={{ uri: team.crestUrl }} style={styles.crest} resizeMode="contain" />
+                  ) : (
+                    <Ionicons name="shield-outline" size={18} color="#059669" style={{ marginRight: 6 }} />
+                  )}
                   <Text style={styles.teamNameText} numberOfLines={1}>
                     {team.team}
                   </Text>
                 </View>
+
+                <Text style={styles.statText}>{team.played}</Text>
+                <Text style={[styles.statText, { width: 36 }]}>
+                  {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
+                </Text>
 
                 {/* Vertical Divider */}
                 <View style={styles.rowDivider} />
@@ -250,6 +234,18 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     backgroundColor: '#E5E7EB',
+  },
+  crest: {
+    width: 20,
+    height: 20,
+    marginRight: 6,
+  },
+  statText: {
+    width: 28,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
   },
   ptsCol: {
     width: 44,

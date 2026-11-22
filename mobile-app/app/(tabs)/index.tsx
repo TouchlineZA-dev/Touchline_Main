@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,77 +7,41 @@ import {
   Image,
   TouchableOpacity,
   Linking,
-  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchlineHeader } from '@/src/components/TouchlineHeader';
+import { ScreenState } from '@/src/components/ScreenState';
 import { api } from '@/src/lib/api/client';
-import { ApiArticle } from '@/src/lib/api/types';
-
-const CATEGORIES = ['All', 'Transfer', 'PSL Giants', 'National Team', 'Management'];
+import { useApi } from '@/src/lib/api/useApi';
+import { formatDate } from '@/src/lib/football';
 
 export default function NewsScreen() {
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [articles, setArticles] = useState<ApiArticle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadNews();
-  }, []);
+  const categories = useApi(() => api.getNewsCategories().then((r) => r.categories), []);
+  const news = useApi(
+    () => api.getNews({ limit: 20, category: selectedCategory ?? undefined }).then((r) => r.articles),
+    [selectedCategory],
+  );
 
-  const loadNews = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getNews(15);
-      if (res.articles && res.articles.length > 0) {
-        setArticles(res.articles);
-      } else {
-        setFallbackArticles();
-      }
-    } catch (e) {
-      setFallbackArticles();
-    } finally {
-      setLoading(false);
-    }
-  };
+  const articles = news.data ?? [];
+  const latest = articles[0];
 
-  const setFallbackArticles = () => {
-    setArticles([
-      {
-        title: 'Justin Bieber Joins BTS, Madonna, And Shakira For FIFA World Cup Halftime Show',
-        url: 'https://www.forbes.com',
-        imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600',
-        publishedAt: '2026-07-09',
-        summary: 'The World Cup brings its first Halftime Show to another level by adding Justin Bieber to its lineup of global superstars.',
-        source: 'Forbes',
-        tag: 'Soccer',
-      },
-      {
-        title: "Women's Africa Cup of Nations 2026: What to know about the tournament",
-        url: 'https://www.aljazeera.com',
-        imageUrl: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600',
-        publishedAt: '2026-07-23',
-        summary: 'Tournament format, venues, title favourites, groups, prize money and players to watch at the 2026 WAFCON in Morocco.',
-        source: 'Al Jazeera English',
-        tag: 'Soccer',
-      },
-      {
-        title: 'Football chief comments on South Africa’s immigration crackdown',
-        url: 'https://fortune.com',
-        imageUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=600',
-        publishedAt: '2026-07-24',
-        summary: 'Confederation of African Football President Patrice Motsepe says South Africa cannot tolerate illegal migration as protests intensify.',
-        source: 'Fortune',
-        tag: 'Soccer',
-      },
-    ]);
-  };
+  const refresh = useCallback(() => {
+    news.reload();
+    if (categories.error) categories.reload();
+  }, [news, categories]);
 
   return (
     <View style={styles.container}>
       <TouchlineHeader />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={news.loading && articles.length > 0} onRefresh={refresh} />}
+      >
         {/* Banner 1: Live News pitch card */}
         <View style={styles.pitchBanner}>
           <View style={styles.bannerRow}>
@@ -90,65 +54,75 @@ export default function NewsScreen() {
               <View style={styles.liveDot} />
               <Text style={styles.liveChipText}>Live</Text>
             </View>
-            <TouchableOpacity style={styles.refreshChip} onPress={loadNews}>
+            <TouchableOpacity style={styles.refreshChip} onPress={refresh}>
               <Ionicons name="refresh" size={12} color="#FFFFFF" />
               <Text style={styles.refreshChipText}>Refresh</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Banner 2: Breaking headline bar */}
-        <View style={styles.breakingBar}>
-          <View style={styles.breakingTag}>
-            <Text style={styles.breakingTagText}>BREAKING</Text>
-          </View>
-          <Text style={styles.breakingText} numberOfLines={1}>
-            • World Cup 2026 Recap and Highlights
-          </Text>
-        </View>
+        {/* Banner 2: latest headline from the API */}
+        {latest ? (
+          <TouchableOpacity style={styles.breakingBar} onPress={() => Linking.openURL(latest.url)}>
+            <View style={styles.breakingTag}>
+              <Text style={styles.breakingTagText}>LATEST</Text>
+            </View>
+            <Text style={styles.breakingText} numberOfLines={1}>
+              • {latest.title}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
-        {/* Filter categories pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-          {CATEGORIES.map((cat) => {
-            const active = selectedCategory === cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.categoryPill, active && styles.categoryPillActive]}
-                onPress={() => setSelectedCategory(cat)}
-              >
-                <Text style={[styles.categoryPillText, active && styles.categoryPillTextActive]}>
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {/* Category pills from the API */}
+        {categories.data && categories.data.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+            {[{ name: 'All', slug: null as string | null }, ...categories.data.map((c) => ({ name: c.name, slug: c.slug }))].map(
+              (cat) => {
+                const active = selectedCategory === cat.slug;
+                return (
+                  <TouchableOpacity
+                    key={cat.slug ?? 'all'}
+                    style={[styles.categoryPill, active && styles.categoryPillActive]}
+                    onPress={() => setSelectedCategory(cat.slug)}
+                  >
+                    <Text style={[styles.categoryPillText, active && styles.categoryPillTextActive]}>{cat.name}</Text>
+                  </TouchableOpacity>
+                );
+              },
+            )}
+          </ScrollView>
+        ) : null}
 
-        {/* News Feed */}
-        {loading ? (
-          <ActivityIndicator color="#1E8E4F" size="large" style={{ marginTop: 32 }} />
+        {/* News feed */}
+        {news.loading && articles.length === 0 ? (
+          <ScreenState type="loading" light message="Loading news..." />
+        ) : news.error ? (
+          <ScreenState type="error" light message={news.error.message} onRetry={refresh} />
+        ) : articles.length === 0 ? (
+          <ScreenState type="empty" light message="No news articles yet." onRetry={refresh} retryLabel="Refresh" />
         ) : (
-          articles.map((item, index) => (
-            <View key={index} style={styles.newsCard}>
+          articles.map((item) => (
+            <View key={item.id} style={styles.newsCard}>
               <View style={styles.imageContainer}>
                 {item.imageUrl ? (
                   <Image source={{ uri: item.imageUrl }} style={styles.cardImage} resizeMode="cover" />
                 ) : (
                   <View style={styles.imagePlaceholder} />
                 )}
-                <View style={styles.soccerBadge}>
-                  <Text style={styles.soccerBadgeText}>{item.tag || 'Soccer'}</Text>
-                </View>
+                {item.category ? (
+                  <View style={styles.soccerBadge}>
+                    <Text style={styles.soccerBadgeText}>{item.category}</Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.cardContent}>
                 <View style={styles.metaRow}>
                   <View style={styles.dateRow}>
                     <Ionicons name="calendar-outline" size={13} color="#666" />
-                    <Text style={styles.metaText}>{item.publishedAt || 'Today'}</Text>
+                    <Text style={styles.metaText}>{formatDate(item.publishedAt)}</Text>
                   </View>
-                  <Text style={[styles.metaText, styles.sourceText]}>{item.source || 'Touchline'}</Text>
+                  <Text style={[styles.metaText, styles.sourceText]}>{item.source}</Text>
                 </View>
 
                 <Text style={styles.newsTitle} numberOfLines={2}>
@@ -161,10 +135,7 @@ export default function NewsScreen() {
                   </Text>
                 ) : null}
 
-                <TouchableOpacity
-                  style={styles.detailsButton}
-                  onPress={() => item.url && Linking.openURL(item.url)}
-                >
+                <TouchableOpacity style={styles.detailsButton} onPress={() => Linking.openURL(item.url)}>
                   <Ionicons name="link-outline" size={14} color="#FFFFFF" />
                   <Text style={styles.detailsButtonText}>View Details</Text>
                 </TouchableOpacity>
