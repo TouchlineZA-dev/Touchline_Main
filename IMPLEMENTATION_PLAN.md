@@ -52,7 +52,7 @@ never trust a user ID in a request body.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/v1/fantasy/players` | Return current-season players, club, position, and database price. |
+| `GET /api/v1/players` | Return current-season players, club, position, and database price. |
 | `GET /api/v1/fantasy/team` | Load the signed-in user's team for the active season. |
 | `PUT /api/v1/fantasy/team` | Create or update the 15-player squad after server-side validation. |
 | `POST /api/v1/fantasy/chip` | Activate an allowed chip under gameweek rules. |
@@ -71,7 +71,9 @@ database access.
 
 ### 0. Locate and align the service repositories
 
-- Locate the existing ASP.NET backend repo and the Python sync-worker repo.
+- Decide whether the new `Touchline API/` project will be split into its own
+  Git repository or placed in the team's existing ASP.NET backend repo.
+- Locate the Python sync-worker repo.
 - Confirm the deployed Supabase project and current database schema before
   applying migrations.
 - Agree on route names, auth claims, IDs, current-season selection, gameweek
@@ -133,13 +135,19 @@ database access.
 
 ## Current repository status and boundary
 
-- This checkout contains the React frontend and a separate news API. It does
-  not contain the C# ASP.NET backend or Python sync-worker project.
+- This checkout contains the React frontend, separate news API, and the new
+  `Touchline API/Touchline.Api` ASP.NET project folder. The ASP.NET code is
+  currently in the same Git repository as the frontend; a folder boundary is
+  not yet a repository/deployment boundary.
+- The Python sync-worker source is not in this checkout.
 - The frontend currently has a browser-local auth implementation and a
   Netlify fantasy API prototype. Neither is the target production architecture.
-- The local fantasy migration file is a draft only; it has not been confirmed
-  against the live database and must not be applied as the canonical migration
-  until reviewed in the owning database repo.
+- The ASP.NET project has controllers, services, models, Supabase token
+  validation, a player catalog endpoint, fantasy endpoints, and scoring
+  calculations. It builds; Supabase-backed routes still need configuration.
+- A fantasy schema proposal is in `Touchline API/Database/`; it has not been
+  confirmed against the live database and must be reviewed in the owning
+  database repo before it is applied.
 - The existing fantasy scoring helpers are useful rule references, but match
   scoring, database persistence, and real login must be completed in their
   target services before fantasy is end-to-end functional.

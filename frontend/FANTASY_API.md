@@ -1,14 +1,13 @@
-# Fantasy API contract and current prototype
+# Fantasy API contract and implementation locations
 
-> **Architecture note:** The approved target is a C# ASP.NET Touchline API, as
-> described in the repository-root `IMPLEMENTATION_PLAN.md`. The Netlify
-> function in this frontend checkout is a prototype only. Port its contract
-> and validation into the existing ASP.NET backend before production use.
+> **Architecture note:** The target is a C# ASP.NET Touchline API. Its initial
+> implementation lives in `Touchline API/Touchline.Api/`. The Netlify function
+> in this frontend folder is a prototype; keep production logic in ASP.NET.
 
-The current prototype is a Netlify Function backed by Supabase. Every route requires
-`Authorization: Bearer <Supabase access token>`. The function verifies the
-token with Supabase Auth and derives the user ID from that verified token; it
-does not trust a user ID supplied in a request body.
+The ASP.NET API verifies `Authorization: Bearer <Supabase access token>` with
+Supabase Auth and derives the user ID from that verified token; it does not
+trust a user ID supplied in a request body. The current API folder is still in
+the same Git repository as the frontend and needs a dedicated backend repo.
 
 ## Routes
 
@@ -50,13 +49,12 @@ The `picks` array must contain all 15 players. Slots 0–10 are starters; slots
 The API uses the latest player lineup in the current season to determine each
 player's club, matching the existing `/api/v1/players` endpoint.
 
-## Prototype prerequisites
+## Configuration and database prerequisites
 
-The migration at `supabase/migrations/20261122090000_fantasy_api.sql` is a draft
-in the wrong repository for production ownership. Review and move its schema
-changes to the canonical migration repo before applying them. The app's current
-browser-only sign-in does not provide the Supabase token required to call this
-prototype.
+The schema draft lives at `../Touchline API/Database/FantasySchemaProposal.sql`.
+It is not the canonical migration and must be reviewed in the database
+migration owner's repository before use. The app's current browser-only
+sign-in does not provide the Supabase token required to call the fantasy API.
 
 Gameweek scoring is intentionally a separate integration: the scoring worker
 must populate `app.fantasy_gameweek_scores` and update team totals. Until that

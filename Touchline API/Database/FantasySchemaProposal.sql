@@ -1,6 +1,8 @@
+-- PROPOSAL ONLY: review this in the canonical sync/database migration repo.
+-- Do not apply this file directly from the Touchline API repo.
 -- Persistent fantasy teams and private league membership.
--- Mutations are performed through the authenticated Netlify API and the
--- service-role-only functions below; direct client access stays disabled.
+-- Mutations are performed through the authenticated ASP.NET API and its
+-- server-only database functions; direct client access stays disabled.
 
 CREATE TABLE IF NOT EXISTS app.fantasy_teams (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

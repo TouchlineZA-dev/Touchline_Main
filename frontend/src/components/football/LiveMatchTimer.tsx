@@ -182,18 +182,18 @@ export const LiveTimerBadge: React.FC<LiveTimerBadgeProps> = ({
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold text-red-600',
+                'inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700',
                 className
             )}
         >
             <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
             </span>
             <span>LIVE</span>
             <span className="tabular-nums font-black">{timer.label}</span>
             {showClock && timer.period !== 'HT' && (
-                <span className="text-[9px] font-medium text-red-500/80">({timer.clock})</span>
+                <span className="text-[9px] font-medium text-emerald-600/80">({timer.clock})</span>
             )}
         </span>
     );

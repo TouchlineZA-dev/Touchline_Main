@@ -43,6 +43,9 @@ import {
     sastTime
 } from '@/services/touchlineApi';
 import { useLiveMatchTimer } from './LiveMatchTimer';
+import { useAuth } from '@/context/AuthContext';
+import { AuthModal } from './AuthModal';
+import { MyClubHub } from './MyClubHub';
 import { cn } from '@/lib/utils';
 
 const REFRESH_MS = 60_000;
@@ -231,14 +234,11 @@ const TeamLine = ({
         {align === 'left' && <TeamCrest crest={crest} name={name} size={24} />}
         <div className={cn('min-w-0', align === 'right' && 'order-2')}>
             <p className="truncate text-sm font-medium leading-tight">{name}</p>
-            <p
-                className={cn(
-                    'text-lg font-semibold tabular-nums leading-none',
-                    highlight ? 'font-bold text-red-600' : 'text-foreground/90'
-                )}
-            >
-                {score ?? 0}
-            </p>
+            {score !== null && score !== undefined && (
+                <p className="text-lg font-semibold tabular-nums leading-none text-foreground/90">
+                    {score}
+                </p>
+            )}
         </div>
         {align === 'right' && <TeamCrest crest={crest} name={name} size={24} />}
     </div>
@@ -311,16 +311,16 @@ const LiveFixtureCard = ({
             className={cn(
                 'w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5',
                 live
-                    ? 'border-red-500/40 shadow-red-500/5 ring-1 ring-red-500/20'
+                    ? 'border-emerald-500/40 shadow-emerald-500/5 ring-1 ring-emerald-500/20'
                     : 'border-border/70'
             )}
         >
             <div className="flex items-center justify-between gap-2">
                 {live ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
                         <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
                         </span>
                         <span>LIVE</span>
                         <span className="tabular-nums font-black">{timer.label}</span>
@@ -340,7 +340,7 @@ const LiveFixtureCard = ({
                 <span
                     className={cn(
                         'text-[11px]',
-                        live ? 'font-semibold tabular-nums text-red-600' : 'text-muted-foreground'
+                        live ? 'font-semibold tabular-nums text-emerald-700' : 'text-muted-foreground'
                     )}
                 >
                     {live
@@ -354,16 +354,15 @@ const LiveFixtureCard = ({
                 <TeamLine
                     crest={fixture.homeCrest}
                     name={fixture.homeTeam}
-                    score={fixture.homeScore}
+                    score={live || isFinished(fixture) ? fixture.homeScore : null}
                     align="left"
-                    highlight={live}
                 />
                 {live ? (
-                    <div className="flex flex-col items-center gap-0.5 rounded-lg bg-red-500/10 px-2 py-1">
-                        <span className="animate-pulse text-xs font-black tabular-nums text-red-600">
+                    <div className="flex flex-col items-center gap-0.5 rounded-lg bg-emerald-500/10 px-2 py-1">
+                        <span className="animate-pulse text-xs font-black tabular-nums text-emerald-700">
                             {timer.label}
                         </span>
-                        <span className="text-[8px] font-bold uppercase tracking-wider text-red-600">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-700">
                             {timer.period === 'HT' ? 'BREAK' : 'LIVE'}
                         </span>
                     </div>
@@ -376,9 +375,8 @@ const LiveFixtureCard = ({
                 <TeamLine
                     crest={fixture.awayCrest}
                     name={fixture.awayTeam}
-                    score={fixture.awayScore}
+                    score={live || isFinished(fixture) ? fixture.awayScore : null}
                     align="right"
-                    highlight={live}
                 />
             </div>
             <div className="mt-3 border-t border-border/60 pt-2">
@@ -642,26 +640,49 @@ const TouchlineHeader = ({
     onAccount
 }: {
     onAccount: () => void;
-}) => (
-    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[28rem] items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary/10">
-                    <img src="/touchline-logo.jpg" alt="Touchline SA" className="h-10 w-10 object-cover" />
-                </div>
-                <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-                        Touchline SA
-                    </p>
-                </div>
-            </div>
+}) => {
+    const { user, isAuthenticated } = useAuth();
 
-            <Button variant="ghost" size="icon" onClick={onAccount} aria-label="Account">
-                <UserCircle className="h-5 w-5" />
-            </Button>
-        </div>
-    </header>
-);
+    return (
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
+            <div className="mx-auto flex max-w-[28rem] items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary/10">
+                        <img src="/touchline-logo.jpg" alt="Touchline SA" className="h-10 w-10 object-cover" />
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+                            Touchline SA
+                        </p>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onAccount}
+                    className="flex items-center gap-2 rounded-full border border-border/70 bg-background/80 hover:bg-muted/80 px-2.5 py-1 transition-all"
+                    aria-label="Account"
+                >
+                    {isAuthenticated && user ? (
+                        <>
+                            {user.favoriteClub && (
+                                <TeamCrest crest={user.favoriteClub.crest} name={user.favoriteClub.name} size={20} />
+                            )}
+                            <span className="text-xs font-bold text-foreground max-w-[5.5rem] truncate">
+                                {user.username}
+                            </span>
+                        </>
+                    ) : (
+                        <>
+                            <UserCircle className="h-4 w-4 text-primary" />
+                            <span className="text-xs font-semibold text-primary">Sign In</span>
+                        </>
+                    )}
+                </button>
+            </div>
+        </header>
+    );
+};
 
 const BottomNav = ({
     screen,
@@ -710,6 +731,7 @@ const BottomNav = ({
 );
 
 export const FootballDashboard = () => {
+    const { openAuthModal } = useAuth();
     const [screen, setScreen] = useState<Screen>('news');
     const [fixtures, setFixtures] = useState<ApiFixture[]>([]);
     const [standings, setStandings] = useState<ApiStanding[]>([]);
@@ -889,6 +911,12 @@ export const FootballDashboard = () => {
 
     const renderNews = () => (
         <div className="space-y-4">
+            <MyClubHub
+                fixtures={sortedFixtures}
+                standings={standings}
+                onSelectFixture={setSelectedFixture}
+            />
+
             <ShellCard className="relative overflow-hidden border-emerald-700/20 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0_8%,transparent_8%_16%),linear-gradient(135deg,#2fbf73,#0f8f4e)] text-white">
                 <div className="pointer-events-none absolute inset-3 rounded-2xl border border-white/25" />
                 <div className="pointer-events-none absolute left-1/2 top-3 h-[calc(100%-1.5rem)] w-px bg-white/20" />
@@ -1302,11 +1330,7 @@ export const FootballDashboard = () => {
 
     return (
         <div className={cn('min-h-screen pb-24', screenBg)}>
-            <TouchlineHeader
-                onAccount={() =>
-                    toast('Account area is not wired yet. Tell me what should live behind this button.')
-                }
-            />
+            <TouchlineHeader onAccount={openAuthModal} />
 
             <main className="mx-auto max-w-[28rem] px-4 py-4">
                 {currentScreen()}
@@ -1315,6 +1339,7 @@ export const FootballDashboard = () => {
             <BottomNav screen={screen} onChange={changeScreen} liveCount={liveFixtures.length} />
             <MatchDetail fixture={selectedFixture} onClose={() => setSelectedFixture(null)} />
             <PlayerPoolDialog open={playerPoolOpen} onOpenChange={setPlayerPoolOpen} />
+            <AuthModal />
         </div>
     );
 };

@@ -335,7 +335,7 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                             <TeamCrest crest={fixture?.homeCrest} name={fixture?.homeTeam} size={24} />
                             {fixture?.homeTeam}
                         </span>
-                        <span className={cn('tabular-nums font-bold', isMatchLive && 'text-red-600')}>
+                        <span className="tabular-nums font-bold text-foreground">
                             {fixture?.homeScore ?? '-'} : {fixture?.awayScore ?? '-'}
                         </span>
                         <span className="flex items-center gap-2">
@@ -345,13 +345,13 @@ export const MatchDetail = ({ fixture, onClose }: MatchDetailProps) => {
                     </DialogTitle>
                     <DialogDescription className="text-center">
                         {isMatchLive ? (
-                            <span className="inline-flex items-center gap-1.5 font-bold text-red-600">
+                            <span className="inline-flex items-center gap-1.5 font-bold text-emerald-700">
                                 <span className="relative flex h-2 w-2">
-                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-600" />
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
                                 </span>
                                 <span>LIVE</span>
-                                <span className="rounded bg-red-600/10 px-1.5 py-0.5 text-xs font-black tabular-nums">
+                                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-black tabular-nums text-emerald-700">
                                     {liveTimer.label}
                                 </span>
                                 <span className="text-xs font-normal text-muted-foreground">

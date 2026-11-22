@@ -64,12 +64,7 @@ export const FixtureRow = ({ fixture, onSelect }: FixtureRowProps) => {
             </span>
 
             {showScore && (
-                <span
-                    className={cn(
-                        'shrink-0 space-y-1.5 text-right text-sm font-semibold tabular-nums',
-                        live && 'text-red-600'
-                    )}
-                >
+                <span className="shrink-0 space-y-1.5 text-right text-sm font-semibold tabular-nums text-foreground">
                     <span className="block">{fixture.homeScore ?? '-'}</span>
                     <span className="block">{fixture.awayScore ?? '-'}</span>
                 </span>
