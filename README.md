@@ -22,6 +22,10 @@ change to make
 See `BACKEND_INTEGRATION.md` for the shared database contract — schema ownership,
 the Sportmonks id-space join rule, and the event/state codes.
 
+See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the target architecture
+from the Touchline architecture diagram, the fantasy API contract, and the
+remaining implementation work.
+
 ## Running the frontend
 
 ```bash
