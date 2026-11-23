@@ -34,6 +34,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/v1/player-rankings"
+  to = "/.netlify/functions/player-rankings"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/v1/health"
   to = "/.netlify/functions/health"
   status = 200
@@ -44,6 +50,17 @@
   to = "/.netlify/functions/matches"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/v1/fantasy/*"
+  to = "/.netlify/functions/fantasy/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
 
 [[redirects]]
   from = "/*"

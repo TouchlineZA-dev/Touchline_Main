@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiArticle, fetchNews } from '@/services/touchlineApi';
+import { ICON, LinkIcon, NewspaperClipping, WarningCircle } from './icons';
 
 /** "3 hours ago" for recent items, a plain SAST date beyond a week. */
 const relativeTime = (iso: string) => {
@@ -25,8 +26,7 @@ const relativeTime = (iso: string) => {
 
 const ArticleCard = ({ article }: { article: ApiArticle }) => {
     const [imageFailed, setImageFailed] = useState(false);
-    const image = article.imageUrl || article.image;
-    const showImage = image && !imageFailed;
+    const showImage = article.imageUrl && !imageFailed;
 
     return (
         <li>
@@ -36,14 +36,18 @@ const ArticleCard = ({ article }: { article: ApiArticle }) => {
                 rel="noopener noreferrer"
                 className="flex gap-3 border-b px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/50"
             >
-                {showImage && (
+                {showImage ? (
                     <img
-                        src={image}
+                        src={article.imageUrl}
                         alt=""
                         loading="lazy"
                         onError={() => setImageFailed(true)}
                         className="h-16 w-20 shrink-0 rounded object-cover"
                     />
+                ) : (
+                    <span className="flex h-16 w-20 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                        <NewspaperClipping size={ICON.empty} />
+                    </span>
                 )}
 
                 <span className="min-w-0 flex-1">
@@ -53,8 +57,9 @@ const ArticleCard = ({ article }: { article: ApiArticle }) => {
                             {article.summary}
                         </span>
                     )}
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                        {article.source?.name}
+                    <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <LinkIcon size={12} />
+                        {article.source}
                         {article.publishedAt && ` · ${relativeTime(article.publishedAt)}`}
                     </span>
                 </span>
@@ -96,7 +101,8 @@ export const NewsList = () => {
 
     if (error) {
         return (
-            <p className="py-10 text-center text-sm text-destructive">
+            <p className="flex items-center justify-center gap-2 py-10 text-center text-sm text-destructive">
+                <WarningCircle size={ICON.action} weight="bold" />
                 Could not load news: {error}
             </p>
         );
@@ -104,10 +110,13 @@ export const NewsList = () => {
 
     if (unavailable || !articles.length) {
         return (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-                No news available right now. Headlines appear here once the sync worker has
-                published them.
-            </p>
+            <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
+                <NewspaperClipping size={ICON.empty} />
+                <p>
+                    No news available right now. Headlines appear here once the sync worker
+                    has published them.
+                </p>
+            </div>
         );
     }
 

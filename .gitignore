@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 .venv/
@@ -11,4 +13,6 @@ repo-meta/
 frontend/node_modules/
 .pnpm-store/
 frontend/dist/
+Touchline API/**/bin/
+Touchline API/**/obj/
 touchline-sync-merged/

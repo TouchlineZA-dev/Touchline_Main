@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { X, Share, Download, Smartphone } from 'lucide-react';
+import { DeviceMobile, DownloadSimple, ShareNetwork, X } from '@phosphor-icons/react';
 
 export const PwaInstallPrompt = () => {
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -64,7 +64,7 @@ export const PwaInstallPrompt = () => {
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                         <div className="bg-green-100 p-2 rounded-full">
-                            <Smartphone className="h-5 w-5 text-green-700" />
+                            <DeviceMobile className="h-5 w-5 text-green-700" />
                         </div>
                         <h4 className="font-bold text-gray-900">Install Touchline SA</h4>
                     </div>
@@ -81,8 +81,8 @@ export const PwaInstallPrompt = () => {
                     <div className="space-y-2 bg-gray-50 p-3 rounded-lg text-sm border border-gray-100">
                         <div className="flex items-center gap-2 text-gray-700">
                             <span>1. Tap the</span>
-                            <Share className="h-4 w-4 text-blue-500" />
-                            <span className="font-semibold">Share</span>
+                            <ShareNetwork className="h-4 w-4 text-blue-500" />
+                            <span className="font-semibold">ShareNetwork</span>
                             <span>button in Safari</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-700">
@@ -97,7 +97,7 @@ export const PwaInstallPrompt = () => {
                         onClick={handleInstallClick}
                         className="w-full bg-green-700 hover:bg-green-800 text-white font-bold shadow-lg shadow-green-200"
                     >
-                        <Download className="mr-2 h-4 w-4" />
+                        <DownloadSimple className="mr-2 h-4 w-4" />
                         Install App Now
                     </Button>
                 )}

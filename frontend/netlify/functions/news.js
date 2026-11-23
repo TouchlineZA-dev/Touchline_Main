@@ -1,74 +1,78 @@
-import { jsonResponse, getSupabaseClient } from './_supabase.js';
+import pg from 'pg';
 
 /**
- * Serves cached South African football news.
+ * Serves South African football news from the sync worker's cache.
  *
- * The sync worker owns news: it calls the provider and writes the cache. This
- * function only reads it — no provider calls, no writes.
+ * The sync worker owns news end to end: it calls the provider and writes one
+ * row to sync.news_cache under cache_key 'sa_football_news', whose `response`
+ * column is already a JSON array of articles. This function reads that row and
+ * passes the array through — it builds nothing and writes nothing.
  *
- * The cache table has moved between schemas (it was created in `app`, and a
- * later sync migration moved it to `sync`), so both are tried in turn and the
- * response reports which one answered.
+ * Unlike the football endpoints (which go through PostgREST), this connects to
+ * Postgres directly as app_api_user. That role already holds SELECT on `sync`,
+ * so no schema needs exposing to the Data API, and the GRANTs enforce the
+ * read-only boundary rather than a blanket service-role key.
  */
-const CACHE_LOCATIONS = [
-    { schema: 'sync', table: 'news_cache' },
-    { schema: 'app', table: 'news_cache' }
-];
+const CACHE_KEY = 'sa_football_news';
 
-const normalizeArticle = (item) => {
-    const source =
-        typeof item.source === 'string'
-            ? { name: item.source, url: '' }
-            : item.source || { name: 'Touchline News', url: '' };
-
-    return {
-        title: item.title || 'Untitled story',
-        summary: item.summary || item.description || item.content || '',
-        description: item.description || item.summary || item.content || '',
-        content: item.content || item.summary || item.description || '',
-        url: item.url || '#',
-        imageUrl: item.imageUrl || item.image || '',
-        image: item.image || item.imageUrl || '',
-        publishedAt: item.publishedAt || item.published_at || new Date().toISOString(),
-        source,
-        tag: item.tag,
-        tagColor: item.tagColor
-    };
-};
+const jsonResponse = (statusCode, body) => ({
+    statusCode,
+    headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+});
 
 /**
- * Read the freshest cached payload, preferring the exact key for this page size
- * and falling back to the newest "headlines*" row.
+ * One pool per warm container. Supabase's transaction pooler (port 6543) is the
+ * right target for short serverless requests; a small max keeps a burst of
+ * concurrent invocations from exhausting connections.
  */
-const readCache = async (client, schema, table, maxResults) => {
-    const scoped = client.schema(schema).from(table);
+let pool;
+const getPool = () => {
+    const raw = (process.env.DATABASE_URL || '').trim();
+    if (!raw) return null;
 
-    const exact = await scoped
-        .select('response,fetched_at')
-        .eq('cache_key', `headlines:v2:${maxResults}`)
-        .order('fetched_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    if (!pool) {
+        // pg merges values parsed from connectionString *over* the config
+        // object, so an `sslmode=require` in the URL replaces the ssl settings
+        // below and re-enables certificate verification. Drop the parameter and
+        // configure TLS explicitly instead.
+        let connectionString = raw;
+        try {
+            const parsed = new URL(raw);
+            parsed.searchParams.delete('sslmode');
+            connectionString = parsed.toString();
+        } catch {
+            // Unparseable — pass it through and let pg report the problem.
+        }
 
-    if (exact.error) throw exact.error;
-    if (exact.data?.response) {
-        return { payload: exact.data.response, fetchedAt: exact.data.fetched_at };
+        pool = new pg.Pool({
+            connectionString,
+            max: 2,
+            idleTimeoutMillis: 10_000,
+            connectionTimeoutMillis: 8_000,
+            // Supabase's pooler presents a certificate that isn't in Node's
+            // trust store. The connection is still encrypted; the chain just
+            // isn't verified. Pinning Supabase's CA would be stricter.
+            ssl: { rejectUnauthorized: false }
+        });
     }
-
-    const latest = await scoped
-        .select('response,fetched_at')
-        .like('cache_key', 'headlines%')
-        .order('fetched_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (latest.error) throw latest.error;
-    if (latest.data?.response) {
-        return { payload: latest.data.response, fetchedAt: latest.data.fetched_at };
-    }
-
-    return { payload: null, fetchedAt: null };
+    return pool;
 };
+
+const normalizeArticle = (item) => ({
+    title: item.title || 'Untitled story',
+    url: item.url || '#',
+    // The cache stores snake_case; the frontend consumes camelCase.
+    imageUrl: item.image_url || item.imageUrl || null,
+    publishedAt: item.published_at || item.publishedAt || null,
+    summary: item.summary || item.description || '',
+    source: typeof item.source === 'string' ? item.source : (item.source?.name ?? 'Touchline News')
+});
 
 export const handler = async (event) => {
     if (event.httpMethod === 'OPTIONS') {
@@ -78,52 +82,62 @@ export const handler = async (event) => {
         return jsonResponse(405, { error: 'Method not allowed', articles: [] });
     }
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-        return jsonResponse(500, {
-            error: 'Supabase environment variables are not configured',
-            articles: []
+    const db = getPool();
+    if (!db) {
+        return jsonResponse(200, {
+            totalArticles: 0,
+            articles: [],
+            unavailable: true,
+            detail: 'DATABASE_URL is not configured'
         });
     }
 
-    const maxParam = Number(event.queryStringParameters?.max || 10);
+    const maxParam = Number(event.queryStringParameters?.max || 20);
     const maxResults = Number.isFinite(maxParam)
-        ? Math.max(1, Math.min(10, Math.floor(maxParam)))
-        : 10;
+        ? Math.max(1, Math.min(50, Math.floor(maxParam)))
+        : 20;
 
-    const failures = [];
+    try {
+        const { rows } = await db.query(
+            'SELECT response, fetched_at FROM sync.news_cache WHERE cache_key = $1',
+            [CACHE_KEY]
+        );
 
-    for (const { schema, table } of CACHE_LOCATIONS) {
-        try {
-            const { payload, fetchedAt } = await readCache(supabase, schema, table, maxResults);
-            if (!payload) {
-                failures.push(`${schema}.${table}: reachable but empty`);
-                continue;
-            }
-
-            const raw = typeof payload === 'string' ? JSON.parse(payload) : payload;
-            const articles = Array.isArray(raw.articles)
-                ? raw.articles.slice(0, maxResults).map(normalizeArticle)
-                : [];
-
+        if (!rows.length) {
             return jsonResponse(200, {
-                totalArticles: articles.length,
-                articles,
-                source: `${schema}.${table}`,
-                fetchedAt
+                totalArticles: 0,
+                articles: [],
+                unavailable: true,
+                detail: `No sync.news_cache row for '${CACHE_KEY}'`
             });
-        } catch (error) {
-            failures.push(`${schema}.${table}: ${error.message}`);
         }
-    }
 
-    // Nothing served: the schema is unexposed, ungranted, or the cache is empty.
-    console.error('news read failed:', failures.join(' | '));
-    return jsonResponse(200, {
-        totalArticles: 0,
-        articles: [],
-        source: null,
-        unavailable: true,
-        detail: failures
-    });
+        // pg parses jsonb into a JS value already; tolerate a string just in case
+        // the column is ever plain json/text.
+        const raw = rows[0].response;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+        // The row holds an array, but accept { articles: [...] } too so an
+        // upstream shape change degrades rather than breaks.
+        const list = Array.isArray(parsed) ? parsed : (parsed?.articles ?? []);
+
+        const articles = list
+            .map(normalizeArticle)
+            .sort((a, b) => Date.parse(b.publishedAt ?? 0) - Date.parse(a.publishedAt ?? 0))
+            .slice(0, maxResults);
+
+        return jsonResponse(200, {
+            totalArticles: articles.length,
+            articles,
+            fetchedAt: rows[0].fetched_at ?? null
+        });
+    } catch (error) {
+        console.error('news read failed:', error);
+        return jsonResponse(200, {
+            totalArticles: 0,
+            articles: [],
+            unavailable: true,
+            detail: error.message
+        });
+    }
 };

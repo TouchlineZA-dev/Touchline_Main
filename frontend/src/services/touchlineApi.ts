@@ -6,7 +6,13 @@
  * Netlify functions in `netlify/functions/`.
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+const isNative = typeof window !== 'undefined' &&
+    window.location?.protocol === 'https:' &&
+    window.location?.hostname === 'localhost';
+
+const API_BASE_URL = isNative
+    ? 'https://backendfpsl.netlify.app/api/v1'
+    : (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
 export type Position = 'GK' | 'DEF' | 'MID' | 'ATT';
 
@@ -58,6 +64,16 @@ export interface ApiFixture {
     kickoff: string | null;
     stateId: number | null;
     status: FixtureStatus;
+    scorers?: ApiFixtureScorer[];
+}
+
+export interface ApiFixtureScorer {
+    minute: number | null;
+    extraMinute: number | null;
+    player: string | null;
+    teamId: number | null;
+    side: 'home' | 'away' | null;
+    type: 'Goal' | 'Own goal' | 'Penalty scored';
 }
 
 export interface ApiStanding {
@@ -78,6 +94,47 @@ export interface ApiStanding {
     form: ('W' | 'D' | 'L')[];
 }
 
+export interface ApiCompetitionRef {
+    id: number;
+    sportmonksCompetitionId: number;
+    name: string;
+    shortCode: string | null;
+    active?: boolean;
+}
+
+export interface ApiSeasonRef {
+    id: number;
+    sportmonksSeasonId: number;
+    name: string;
+    isCurrent: boolean;
+    finished?: boolean;
+    pending?: boolean;
+}
+
+export interface ApiPlayerRankingRow {
+    rank: number;
+    playerId: number;
+    sportmonksPlayerId: number;
+    player: string;
+    jerseyNumber: number | null;
+    club: string | null;
+    clubId: number | null;
+    total: number;
+}
+
+export interface ApiPlayerRankingsResponse {
+    competition: ApiCompetitionRef;
+    competitions: ApiCompetitionRef[];
+    season: ApiSeasonRef;
+    seasons: ApiSeasonRef[];
+    matchesCounted: number;
+    rankings: {
+        goals: ApiPlayerRankingRow[];
+        assists: ApiPlayerRankingRow[];
+        cleanSheets: ApiPlayerRankingRow[];
+    };
+}
+
 export interface ApiTeamRef {
     id: number;
     name: string;
@@ -96,6 +153,9 @@ export interface ApiMatchEvent {
     player: string | null;
     /** Second player: substitution partner, or possible assist (unreliable). */
     relatedPlayer: string | null;
+    /** Sportmonks ids, for pinning events to lineup entries. */
+    sportmonksPlayerId: number | null;
+    relatedSportmonksPlayerId: number | null;
     result: string | null;
 }
 
@@ -137,6 +197,8 @@ export interface ApiMatchDetail {
         away: { starting: ApiLineupPlayer[]; bench: ApiLineupPlayer[] };
     };
     statistics: ApiTeamStat[];
+    /** Provider stat codes we have no name for; withheld from `statistics`. */
+    unlabelledStatTypes?: number[];
     /** Always true on this data plan — never present these as per-player. */
     statisticsAreTeamLevel: boolean;
 }
@@ -186,34 +248,40 @@ export const fetchStandings = () =>
         standings: ApiStanding[];
     }>('/standings');
 
+export const fetchPlayerRankings = (params?: { competitionId?: number; seasonId?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.competitionId) query.set('competitionId', String(params.competitionId));
+    if (params?.seasonId) query.set('seasonId', String(params.seasonId));
+
+    const suffix = query.toString();
+    return get<ApiPlayerRankingsResponse>(`/player-rankings${suffix ? `?${suffix}` : ''}`);
+};
+
 export const fetchMatchDetail = (fixtureId: number) =>
     get<ApiMatchDetail>(`/matches?fixtureId=${fixtureId}`);
 
 export interface ApiArticle {
     title: string;
-    summary: string;
-    description: string;
-    content: string;
     url: string;
-    imageUrl: string;
-    image: string;
-    publishedAt: string;
-    source: { name: string; url: string };
+    imageUrl: string | null;
+    publishedAt: string | null;
+    summary: string;
+    /** Publication name, e.g. "SoccerLaduma". */
+    source: string;
     tag?: string;
-    tagColor?: string;
 }
 
 export interface ApiNewsResponse {
     totalArticles: number;
     articles: ApiArticle[];
-    /** Which cache table answered, or null when none could be read. */
-    source: string | null;
+    /** When the sync worker last refreshed the cache. */
     fetchedAt?: string | null;
-    /** Set when no cache was reachable — the UI shows an explanatory empty state. */
+    /** Set when the cache could not be read — the UI shows an empty state. */
     unavailable?: boolean;
+    detail?: string;
 }
 
-export const fetchNews = (max = 10) => get<ApiNewsResponse>(`/news/headlines?max=${max}`);
+export const fetchNews = (max = 20) => get<ApiNewsResponse>(`/news/headlines?max=${max}`);
 
 /** Fixture states that mean the result is final — BACKEND_INTEGRATION.md §6. */
 export const FINAL_STATE_IDS = [5, 7, 8];
@@ -221,7 +289,22 @@ export const FINAL_STATE_IDS = [5, 7, 8];
 export const isFinished = (fixture: Pick<ApiFixture, 'stateId'>) =>
     fixture.stateId !== null && FINAL_STATE_IDS.includes(fixture.stateId);
 
-export const isLive = (fixture: Pick<ApiFixture, 'stateId'>) => fixture.stateId === 22;
+export const LIVE_STATE_IDS = [2, 3, 4, 6, 9, 21, 22];
+
+export const isLive = (
+    fixture: Pick<ApiFixture, 'stateId'> & { status?: string; kickoff?: string | null }
+) => {
+    if (fixture.status === 'Live') return true;
+    if (fixture.stateId !== null && LIVE_STATE_IDS.includes(fixture.stateId)) return true;
+    if (fixture.kickoff && !isFinished(fixture) && !hasNoResult(fixture)) {
+        const start = Date.parse(fixture.kickoff);
+        const now = Date.now();
+        if (!isNaN(start) && now >= start && now - start < 125 * 60 * 1000) {
+            return true;
+        }
+    }
+    return false;
+};
 
 /** Postponed / cancelled / abandoned — shown, but never counted as a result. */
 export const hasNoResult = (fixture: Pick<ApiFixture, 'stateId'>) =>

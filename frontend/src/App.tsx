@@ -7,23 +7,29 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
+import { AuthProvider } from "@/context/AuthContext";
+import { ClubThemeProvider } from "@/context/ClubThemeContext";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <PwaInstallPrompt />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <ClubThemeProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <PwaInstallPrompt />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </ClubThemeProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

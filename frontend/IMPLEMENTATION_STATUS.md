@@ -1,5 +1,11 @@
 # Project Implementation Status
 
+> **Architecture note:** This is a legacy feature-status snapshot and includes
+> older Firebase/Firestore assumptions. For the current target (React → C# /
+> ASP.NET Touchline API → Supabase, with the separate Python sync service), use
+> the repository-root [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md).
+> The legacy checkboxes below have not been reconciled against that architecture.
+
 This document tracks the completion status of the core features for the Squad Strategy League (PSL Edition).
 
 ## 🟢 1. Core Architecture (COMPLETED)

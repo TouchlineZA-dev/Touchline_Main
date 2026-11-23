@@ -1,0 +1,32 @@
+@baseUrl = http://127.0.0.1:5080
+@accessToken = REPLACE_WITH_SUPABASE_ACCESS_TOKEN
+
+### Health does not require Supabase settings
+GET {{baseUrl}}/api/v1/health
+
+### Players requires Supabase server configuration
+GET {{baseUrl}}/api/v1/players
+
+### Fantasy routes require a valid Supabase access token
+GET {{baseUrl}}/api/v1/fantasy/team
+Authorization: Bearer {{accessToken}}
+
+### Save a team after replacing picks with all 15 selected players
+PUT {{baseUrl}}/api/v1/fantasy/team
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "teamName": "My Touchline XI",
+  "formation": "4-4-2",
+  "picks": []
+}
+
+### Create a league after the user has saved a team
+POST {{baseUrl}}/api/v1/fantasy/leagues
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Friends League"
+}

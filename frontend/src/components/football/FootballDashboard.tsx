@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
     ArrowRight,
-    ChevronDown,
-    Loader2,
+    Broadcast,
+    CaretDown,
+    CaretLeft,
+    CaretRight,
+    ChartBar,
+    CircleNotch,
+    ICON,
+    Medal,
     Newspaper,
     Shield,
-    ShieldHalf,
     Trophy,
-    UserCircle2,
-    Users,
-    Radio
-} from 'lucide-react';
+    UserCircle,
+    Users
+} from './icons';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -24,16 +28,24 @@ import {
     ApiArticle,
     ApiFixture,
     ApiPlayer,
+    ApiPlayerRankingRow,
+    ApiPlayerRankingsResponse,
     ApiStanding,
+    fetchPlayerRankings,
     fetchFixtures,
     fetchNews,
     fetchPlayers,
     fetchStandings,
     isFinished,
+    isLive,
     sastDate,
     sastDayKey,
     sastTime
 } from '@/services/touchlineApi';
+import { useLiveMatchTimer } from './LiveMatchTimer';
+import { useAuth } from '@/context/AuthContext';
+import { AuthModal } from './AuthModal';
+import { MyClubHub } from './MyClubHub';
 import { cn } from '@/lib/utils';
 
 const REFRESH_MS = 60_000;
@@ -44,11 +56,10 @@ const NAV_ITEMS: Array<{ key: Screen; label: string; icon: typeof Newspaper }> =
     { key: 'news', label: 'News', icon: Newspaper },
     { key: 'squad', label: 'My Squad', icon: Users },
     { key: 'leagues', label: 'Leagues', icon: Trophy },
-    { key: 'table', label: 'PSL Table', icon: ShieldHalf },
-    { key: 'live', label: 'Live Games', icon: Radio }
+    { key: 'table', label: 'PSL Table', icon: Shield },
+    { key: 'live', label: 'Live Games', icon: Broadcast }
 ];
 
-const TAG_FALLBACKS = ['All', 'Breaking', 'Transfers', 'PSL Giants', 'National Team', 'Management'];
 const PLAYER_FILTERS: PlayerPositionFilter[] = ['All', 'GK', 'DEF', 'MID', 'ATT'];
 
 const isNonEmptyString = (value: string | null | undefined): value is string =>
@@ -85,6 +96,83 @@ const groupByDay = (fixtures: ApiFixture[]) => {
     }
 
     return [...groups.entries()];
+};
+
+type FixtureGameweek = {
+    key: string;
+    label: string;
+    dateRange: string;
+    fixtures: ApiFixture[];
+};
+
+const sastDateParts = (utcIso: string | null) => {
+    if (!utcIso) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Johannesburg',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date(utcIso));
+
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    const day = Number(parts.find((part) => part.type === 'day')?.value);
+
+    if (!year || !month || !day) return null;
+    return { year, month, day };
+};
+
+const mondayWeekKey = (utcIso: string | null) => {
+    const parts = sastDateParts(utcIso);
+    if (!parts) return 'unknown';
+
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    const day = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() - day + 1);
+
+    return date.toISOString().slice(0, 10);
+};
+
+const formatGameweekRange = (fixtures: ApiFixture[]) => {
+    const datedFixtures = fixtures.filter((fixture) => fixture.kickoff);
+    const first = datedFixtures[0]?.kickoff ?? null;
+    const last = datedFixtures[datedFixtures.length - 1]?.kickoff ?? first;
+
+    if (!first) return 'Dates TBD';
+    if (sastDayKey(first) === sastDayKey(last)) return sastDate(first);
+    return `${sastDate(first)} - ${sastDate(last)}`;
+};
+
+const buildGameweeks = (fixtures: ApiFixture[]): FixtureGameweek[] => {
+    const groups = new Map<string, ApiFixture[]>();
+
+    for (const fixture of fixtures) {
+        const key = mondayWeekKey(fixture.kickoff);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)?.push(fixture);
+    }
+
+    return [...groups.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, group], index) => ({
+            key,
+            label: key === 'unknown' ? 'Gameweek TBD' : `Gameweek ${index + 1}`,
+            dateRange: formatGameweekRange(group),
+            fixtures: group
+        }));
+};
+
+const currentGameweekIndex = (gameweeks: FixtureGameweek[]) => {
+    if (!gameweeks.length) return 0;
+
+    const todayKey = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'Africa/Johannesburg'
+    });
+    const currentOrNext = gameweeks.findIndex((gameweek) =>
+        gameweek.fixtures.some((fixture) => sastDayKey(fixture.kickoff) >= todayKey)
+    );
+
+    return currentOrNext >= 0 ? currentOrNext : gameweeks.length - 1;
 };
 
 const getStatusLabel = (fixture: ApiFixture) => {
@@ -133,28 +221,32 @@ const TeamLine = ({
     crest,
     name,
     score,
-    align = 'left'
+    align = 'left',
+    highlight = false
 }: {
     crest: string | null;
     name: string;
     score: number | null;
     align?: 'left' | 'right';
+    highlight?: boolean;
 }) => (
     <div className={cn('flex min-w-0 items-center gap-2', align === 'right' && 'justify-end text-right')}>
         {align === 'left' && <TeamCrest crest={crest} name={name} size={24} />}
         <div className={cn('min-w-0', align === 'right' && 'order-2')}>
             <p className="truncate text-sm font-medium leading-tight">{name}</p>
-            <p className="text-lg font-semibold tabular-nums leading-none text-foreground/90">
-                {score ?? 0}
-            </p>
+            {score !== null && score !== undefined && (
+                <p className="text-lg font-semibold tabular-nums leading-none text-foreground/90">
+                    {score}
+                </p>
+            )}
         </div>
         {align === 'right' && <TeamCrest crest={crest} name={name} size={24} />}
     </div>
 );
 
 const NewsCard = ({ article }: { article: ApiArticle }) => {
-    const image = article.imageUrl || article.image;
-    const tag = article.tag || 'General';
+    const image = article.imageUrl;
+    const tag = article.tag || article.source || 'News';
 
     return (
         <a
@@ -183,7 +275,7 @@ const NewsCard = ({ article }: { article: ApiArticle }) => {
             )}
             <div className="space-y-2 p-4">
                 <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                    <span>{article.source?.name ?? 'Touchline News'}</span>
+                    <span>{article.source ?? 'Touchline News'}</span>
                     <span>{article.publishedAt ? formatRelativeTime(article.publishedAt) : ''}</span>
                 </div>
                 <h3 className="line-clamp-2 text-sm font-semibold leading-snug">{article.title}</h3>
@@ -208,44 +300,119 @@ const LiveFixtureCard = ({
     fixture: ApiFixture;
     onSelect: (fixture: ApiFixture) => void;
 }) => {
+    const live = isLive(fixture);
+    const timer = useLiveMatchTimer(fixture.kickoff, fixture.stateId, fixture.scorers);
+    const scorers = fixture.scorers ?? [];
+
     return (
         <button
             type="button"
             onClick={() => onSelect(fixture)}
-            className="w-full rounded-2xl border border-border/70 bg-white p-3 text-left shadow-sm transition-transform duration-200 hover:-translate-y-0.5"
+            className={cn(
+                'w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5',
+                live
+                    ? 'border-emerald-500/40 shadow-emerald-500/5 ring-1 ring-emerald-500/20'
+                    : 'border-border/70'
+            )}
         >
             <div className="flex items-center justify-between gap-2">
+                {live ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                        <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
+                        </span>
+                        <span>LIVE</span>
+                        <span className="tabular-nums font-black">{timer.label}</span>
+                    </span>
+                ) : (
+                    <span
+                        className={cn(
+                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                            isFinished(fixture)
+                                ? 'bg-muted text-muted-foreground'
+                                : 'bg-emerald-500/10 text-emerald-700'
+                        )}
+                    >
+                        {getStatusLabel(fixture)}
+                    </span>
+                )}
                 <span
                     className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                        isFinished(fixture)
-                            ? 'bg-muted text-muted-foreground'
-                            : 'bg-emerald-500/10 text-emerald-700'
+                        'text-[11px]',
+                        live ? 'font-semibold tabular-nums text-emerald-700' : 'text-muted-foreground'
                     )}
                 >
-                    {getStatusLabel(fixture)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                    {fixture.kickoff ? sastTime(fixture.kickoff) : 'TBD'}
+                    {live
+                        ? `${timer.periodLabel} · ${timer.clock}`
+                        : fixture.kickoff
+                          ? sastTime(fixture.kickoff)
+                          : 'TBD'}
                 </span>
             </div>
             <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                 <TeamLine
                     crest={fixture.homeCrest}
                     name={fixture.homeTeam}
-                    score={fixture.homeScore}
+                    score={live || isFinished(fixture) ? fixture.homeScore : null}
                     align="left"
                 />
-                <div className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    <span>VS</span>
-                    <span>Fixture</span>
-                </div>
+                {live ? (
+                    <div className="flex flex-col items-center gap-0.5 rounded-lg bg-emerald-500/10 px-2 py-1">
+                        <span className="animate-pulse text-xs font-black tabular-nums text-emerald-700">
+                            {timer.label}
+                        </span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-700">
+                            {timer.period === 'HT' ? 'BREAK' : 'LIVE'}
+                        </span>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        <span>VS</span>
+                        <span>Fixture</span>
+                    </div>
+                )}
                 <TeamLine
                     crest={fixture.awayCrest}
                     name={fixture.awayTeam}
-                    score={fixture.awayScore}
+                    score={live || isFinished(fixture) ? fixture.awayScore : null}
                     align="right"
                 />
+            </div>
+            <div className="mt-3 border-t border-border/60 pt-2">
+                {scorers.length > 0 ? (
+                    <div className="space-y-1">
+                        {scorers.map((scorer, index) => (
+                            <p
+                                key={`${fixture.id}-${scorer.player ?? 'unknown'}-${scorer.minute ?? index}-${index}`}
+                                className={cn(
+                                    'text-[11px] leading-5 text-muted-foreground',
+                                    scorer.side === 'away' && 'text-right'
+                                )}
+                            >
+                                <span className="font-semibold text-foreground">
+                                    {scorer.player ?? 'Unknown scorer'}
+                                </span>
+                                {scorer.minute !== null && (
+                                    <span>
+                                        {' '}
+                                        {scorer.minute}
+                                        {scorer.extraMinute ? `+${scorer.extraMinute}` : ''}'
+                                    </span>
+                                )}
+                                {scorer.type !== 'Goal' && <span> · {scorer.type}</span>}
+                            </p>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                        {isFinished(fixture)
+                            ? 'No scorers recorded.'
+                            : live
+                              ? 'Match in progress — scorers will appear here as goals are scored.'
+                              : 'Scorers will appear after goals are recorded.'}
+                    </p>
+                )}
             </div>
         </button>
     );
@@ -338,7 +505,7 @@ const PlayerPoolDialog = ({
                     <DialogHeader>
                         <DialogTitle className="text-left">Player pool</DialogTitle>
                         <DialogDescription className="text-left">
-                            Browse the live PSL player list. Squad selection is not connected yet.
+                            Browse the current PSL player list. Squad selection is coming soon.
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -367,7 +534,7 @@ const PlayerPoolDialog = ({
 
                     {loading && (
                         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <CircleNotch className="h-4 w-4 animate-spin" />
                             Loading players…
                         </div>
                     )}
@@ -414,59 +581,146 @@ const PlayerPoolDialog = ({
     );
 };
 
+const RankingList = ({
+    title,
+    statLabel,
+    rows,
+    emptyMessage
+}: {
+    title: string;
+    statLabel: string;
+    rows: ApiPlayerRankingRow[];
+    emptyMessage: string;
+}) => (
+    <ShellCard className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+            <div className="flex items-center gap-2">
+                <Medal className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">{title}</h3>
+            </div>
+            <span className="text-[11px] font-semibold uppercase text-muted-foreground">Top 10</span>
+        </div>
+
+        {rows.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+        ) : (
+            <ol className="divide-y divide-border/70">
+                {rows.map((row) => (
+                    <li key={`${title}-${row.sportmonksPlayerId}`} className="grid grid-cols-[2.25rem_1fr_auto] items-center gap-3 px-4 py-3">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold tabular-nums text-primary">
+                            {row.rank}
+                        </span>
+                        <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                                {row.jerseyNumber !== null && (
+                                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                                        #{row.jerseyNumber}
+                                    </span>
+                                )}
+                                <p className="truncate text-sm font-semibold">{row.player}</p>
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {row.club ?? 'Club unavailable'}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-lg font-bold tabular-nums">{row.total}</p>
+                            <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                {statLabel}
+                            </p>
+                        </div>
+                    </li>
+                ))}
+            </ol>
+        )}
+    </ShellCard>
+);
+
 const TouchlineHeader = ({
     onAccount
 }: {
     onAccount: () => void;
-}) => (
-    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[28rem] items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary/10">
-                    <img src="/touchline-logo.jpg" alt="Touchline SA" className="h-10 w-10 object-cover" />
-                </div>
-                <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-                        Touchline SA
-                    </p>
-                </div>
-            </div>
+}) => {
+    const { user, isAuthenticated } = useAuth();
 
-            <Button variant="ghost" size="icon" onClick={onAccount} aria-label="Account">
-                <UserCircle2 className="h-5 w-5" />
-            </Button>
-        </div>
-    </header>
-);
+    return (
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
+            <div className="mx-auto flex max-w-[28rem] items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary/10">
+                        <img src="/touchline-logo.jpg" alt="Touchline SA" className="h-10 w-10 object-cover" />
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
+                            Touchline SA
+                        </p>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onAccount}
+                    className="flex items-center gap-2 rounded-full border border-border/70 bg-background/80 hover:bg-muted/80 px-2.5 py-1 transition-all"
+                    aria-label="Account"
+                >
+                    {isAuthenticated && user ? (
+                        <>
+                            {user.favoriteClub && (
+                                <TeamCrest crest={user.favoriteClub.crest} name={user.favoriteClub.name} size={20} />
+                            )}
+                            <span className="text-xs font-bold text-foreground max-w-[5.5rem] truncate">
+                                {user.username}
+                            </span>
+                        </>
+                    ) : (
+                        <>
+                            <UserCircle className="h-4 w-4 text-primary" />
+                            <span className="text-xs font-semibold text-primary">Sign In</span>
+                        </>
+                    )}
+                </button>
+            </div>
+        </header>
+    );
+};
 
 const BottomNav = ({
     screen,
-    onChange
+    onChange,
+    liveCount = 0
 }: {
     screen: Screen;
     onChange: (screen: Screen) => void;
+    liveCount?: number;
 }) => (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/95 backdrop-blur">
         <div className="mx-auto grid max-w-[28rem] grid-cols-5 px-2 py-2">
             {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
                 const active = screen === key;
+                const hasLive = key === 'live' && liveCount > 0;
                 return (
                     <button
                         key={key}
                         type="button"
                         onClick={() => onChange(key)}
                         className={cn(
-                            'flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                            'relative flex flex-col items-center gap-1.5 rounded-2xl px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors',
                             active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                         )}
                     >
                         <span
                             className={cn(
-                                'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+                                'relative flex h-11 w-11 items-center justify-center rounded-full transition-colors',
                                 active ? 'bg-primary/10' : 'bg-transparent'
                             )}
                         >
-                            <Icon className="h-4.5 w-4.5" />
+                            <Icon size={ICON.nav} weight={active ? 'fill' : 'regular'} />
+                            {hasLive && (
+                                <span className="absolute right-1 top-1 flex h-2.5 w-2.5">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                                </span>
+                            )}
                         </span>
                         <span className="leading-none">{label}</span>
                     </button>
@@ -477,6 +731,7 @@ const BottomNav = ({
 );
 
 export const FootballDashboard = () => {
+    const { openAuthModal } = useAuth();
     const [screen, setScreen] = useState<Screen>('news');
     const [fixtures, setFixtures] = useState<ApiFixture[]>([]);
     const [standings, setStandings] = useState<ApiStanding[]>([]);
@@ -490,6 +745,13 @@ export const FootballDashboard = () => {
     const [selectedFixture, setSelectedFixture] = useState<ApiFixture | null>(null);
     const [selectedTag, setSelectedTag] = useState<string>('All');
     const [playerPoolOpen, setPlayerPoolOpen] = useState(false);
+    const [rankingsData, setRankingsData] = useState<ApiPlayerRankingsResponse | null>(null);
+    const [rankingsLoading, setRankingsLoading] = useState(true);
+    const [rankingsError, setRankingsError] = useState<string | null>(null);
+    const [selectedCompetitionId, setSelectedCompetitionId] = useState<number | undefined>();
+    const [selectedSeasonId, setSelectedSeasonId] = useState<number | undefined>();
+    const [selectedGameweekIndex, setSelectedGameweekIndex] = useState(-1);
+    const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -526,6 +788,37 @@ export const FootballDashboard = () => {
     useEffect(() => {
         let cancelled = false;
 
+        const loadRankings = async () => {
+            setRankingsLoading(true);
+            setRankingsError(null);
+
+            try {
+                const data = await fetchPlayerRankings({
+                    competitionId: selectedCompetitionId,
+                    seasonId: selectedSeasonId
+                });
+
+                if (cancelled) return;
+
+                setRankingsData(data);
+                setSelectedCompetitionId(data.competition.sportmonksCompetitionId);
+                setSelectedSeasonId(data.season.id);
+            } catch (err) {
+                if (!cancelled) setRankingsError((err as Error).message);
+            } finally {
+                if (!cancelled) setRankingsLoading(false);
+            }
+        };
+
+        loadRankings();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedCompetitionId, selectedSeasonId]);
+
+    useEffect(() => {
+        let cancelled = false;
+
         const loadNews = async () => {
             try {
                 const data = await fetchNews(10);
@@ -551,11 +844,40 @@ export const FootballDashboard = () => {
         [fixtures]
     );
 
+    const liveFixtures = useMemo(
+        () => sortedFixtures.filter(isLive),
+        [sortedFixtures]
+    );
+
     const upcomingFixtures = useMemo(
         () => sortedFixtures.filter((fixture) => !isFinished(fixture)),
         [sortedFixtures]
     );
     const finishedFixtures = useMemo(() => sortedFixtures.filter(isFinished).reverse(), [sortedFixtures]);
+    const fixtureGameweeks = useMemo(() => buildGameweeks(sortedFixtures), [sortedFixtures]);
+    const selectedGameweek = fixtureGameweeks[selectedGameweekIndex] ?? fixtureGameweeks[0] ?? null;
+    // selectedGameweekIndex starts at -1 ("not chosen yet"), which falls back to
+    // the first gameweek above — the arrows need that resolved index.
+    const gameweekIndex =
+        selectedGameweekIndex >= 0 && selectedGameweekIndex < fixtureGameweeks.length
+            ? selectedGameweekIndex
+            : 0;
+    const stepGameweek = (delta: number) =>
+        setSelectedGameweekIndex(
+            Math.min(Math.max(gameweekIndex + delta, 0), Math.max(fixtureGameweeks.length - 1, 0))
+        );
+
+    useEffect(() => {
+        if (!fixtureGameweeks.length) {
+            setSelectedGameweekIndex(-1);
+            return;
+        }
+
+        setSelectedGameweekIndex((current) => {
+            if (current >= 0 && current < fixtureGameweeks.length) return current;
+            return currentGameweekIndex(fixtureGameweeks);
+        });
+    }, [fixtureGameweeks]);
 
     const newsCategories = useMemo(() => {
         const tags = new Set<string>();
@@ -564,7 +886,7 @@ export const FootballDashboard = () => {
         }
 
         const values = [...tags].sort((a, b) => a.localeCompare(b));
-        return values.length ? ['All', ...values] : TAG_FALLBACKS;
+        return ['All', ...values];
     }, [news]);
 
     useEffect(() => {
@@ -580,9 +902,21 @@ export const FootballDashboard = () => {
 
     const featuredNews = filteredNews[0] ?? null;
     const restNews = filteredNews.slice(1);
+    const changeScreen = (nextScreen: Screen) => {
+        if (nextScreen === 'live' && fixtureGameweeks.length > 0) {
+            setSelectedGameweekIndex(currentGameweekIndex(fixtureGameweeks));
+        }
+        setScreen(nextScreen);
+    };
 
     const renderNews = () => (
         <div className="space-y-4">
+            <MyClubHub
+                fixtures={sortedFixtures}
+                standings={standings}
+                onSelectFixture={setSelectedFixture}
+            />
+
             <ShellCard className="relative overflow-hidden border-emerald-700/20 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0_8%,transparent_8%_16%),linear-gradient(135deg,#2fbf73,#0f8f4e)] text-white">
                 <div className="pointer-events-none absolute inset-3 rounded-2xl border border-white/25" />
                 <div className="pointer-events-none absolute left-1/2 top-3 h-[calc(100%-1.5rem)] w-px bg-white/20" />
@@ -621,7 +955,7 @@ export const FootballDashboard = () => {
 
             {newsLoading ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <CircleNotch className="h-4 w-4 animate-spin" />
                     Loading news…
                 </div>
             ) : newsError ? (
@@ -671,8 +1005,8 @@ export const FootballDashboard = () => {
     const renderSquad = () => (
         <div className="space-y-4">
             <PlaceholderPanel
-                title="My Squad"
-                description="Squad management is not connected yet, but the player pool is live so you can start exploring current PSL options."
+                title="My Squad Coming Soon"
+                description="Squad management is coming soon. For now, you can keep exploring players, fixtures, and the PSL table without getting stuck."
                 primary={{
                     label: 'Browse player pool',
                     onClick: () => setPlayerPoolOpen(true)
@@ -701,36 +1035,111 @@ export const FootballDashboard = () => {
 
     const renderLeagues = () => (
         <div className="space-y-4">
-            <PlaceholderPanel
-                title="Leagues"
-                description="Private leagues and invites are not wired up yet. This screen is ready for that workflow once the backend exists."
-                primary={{
-                    label: 'Create league',
-                    onClick: () =>
-                        toast('League creation is not connected yet. Tell me what backend flow you want.')
-                }}
-                secondary={{
-                    label: 'Join league',
-                    onClick: () =>
-                        toast('League joining is not connected yet. I need the invite flow or API details.')
-                }}
-            />
-
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={Trophy}
-                    title="Suggested next step"
-                    subtitle="If you want real league functionality, I need the league rules and backend endpoint."
+                    icon={ChartBar}
+                    title="TOP PLAYER STATISTICS"
+                    subtitle="Rankings from completed matches in the selected competition and season."
                 />
-                <div className="mt-4 flex gap-2">
-                    <Button className="flex-1" variant="outline" onClick={() => setScreen('table')}>
-                        PSL table
-                    </Button>
-                    <Button className="flex-1" variant="outline" onClick={() => setScreen('news')}>
-                        Go to news
-                    </Button>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5">
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                            League
+                        </span>
+                        <div className="relative">
+                            <select
+                                value={selectedCompetitionId ?? ''}
+                                onChange={(event) => {
+                                    const nextCompetitionId = Number(event.target.value);
+                                    setSelectedCompetitionId(nextCompetitionId);
+                                    setSelectedSeasonId(undefined);
+                                }}
+                                className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-sm"
+                                disabled={rankingsLoading && !rankingsData}
+                            >
+                                {rankingsData?.competitions.map((competition) => (
+                                    <option
+                                        key={competition.sportmonksCompetitionId}
+                                        value={competition.sportmonksCompetitionId}
+                                    >
+                                        {competition.shortCode === 'ZAF PL'
+                                            ? 'PSL'
+                                            : competition.shortCode || competition.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                    </label>
+
+                    <label className="space-y-1.5">
+                        <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                            Season
+                        </span>
+                        <div className="relative">
+                            <select
+                                value={selectedSeasonId ?? ''}
+                                onChange={(event) => setSelectedSeasonId(Number(event.target.value))}
+                                className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-sm"
+                                disabled={rankingsLoading && !rankingsData}
+                            >
+                                {rankingsData?.seasons.map((season) => (
+                                    <option key={season.id} value={season.id}>
+                                        {season.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <CaretDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                    </label>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                    {rankingsLoading ? (
+                        <>
+                            <CircleNotch className="h-3.5 w-3.5 animate-spin" />
+                            <span>Loading rankings...</span>
+                        </>
+                    ) : (
+                        <span>{rankingsData?.matchesCounted ?? 0} completed matches counted</span>
+                    )}
                 </div>
             </ShellCard>
+
+            {rankingsError && (
+                <ShellCard className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                    Could not load player rankings: {rankingsError}
+                </ShellCard>
+            )}
+
+            {!rankingsError && rankingsLoading && !rankingsData ? (
+                <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                    <CircleNotch className="h-4 w-4 animate-spin" />
+                    Loading player statistics...
+                </ShellCard>
+            ) : (
+                <div className="grid gap-4">
+                    <RankingList
+                        title="Goals"
+                        statLabel="Goals"
+                        rows={rankingsData?.rankings.goals ?? []}
+                        emptyMessage="No goal scorers are available for this selection."
+                    />
+                    <RankingList
+                        title="Assists"
+                        statLabel="Assists"
+                        rows={rankingsData?.rankings.assists ?? []}
+                        emptyMessage="No player-level assists are available for this selection."
+                    />
+                    <RankingList
+                        title="Clean Sheets"
+                        statLabel="Clean Sheets"
+                        rows={rankingsData?.rankings.cleanSheets ?? []}
+                        emptyMessage="No clean sheets are available for this selection."
+                    />
+                </div>
+            )}
         </div>
     );
 
@@ -738,7 +1147,7 @@ export const FootballDashboard = () => {
         <div className="space-y-4">
             <ShellCard className="p-4">
                 <SectionTitle
-                    icon={ShieldHalf}
+                    icon={Shield}
                     title="PSL Table"
                     subtitle="League standings are calculated from completed matches only."
                 />
@@ -752,7 +1161,7 @@ export const FootballDashboard = () => {
                         >
                             <option value={seasonName ?? ''}>{seasonName ?? 'Current season'}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <CaretDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     </div>
                     <span className="text-xs text-muted-foreground">
                         {coreLoading ? 'Updating table…' : `${standings.length} teams`}
@@ -769,7 +1178,7 @@ export const FootballDashboard = () => {
             <ShellCard className="overflow-hidden">
                 {coreLoading && standings.length === 0 ? (
                     <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading table…
                     </div>
                 ) : (
@@ -783,53 +1192,121 @@ export const FootballDashboard = () => {
 
     const renderLive = () => (
         <div className="space-y-4">
-            <ShellCard className="p-4">
-                <SectionTitle
-                    icon={Radio}
-                    title="Live Games"
-                    subtitle="Tap any fixture to open the match detail view."
-                />
-            </ShellCard>
-
             {coreError && (
                 <ShellCard className="border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                     Could not load live fixtures: {coreError}
                 </ShellCard>
             )}
 
-            <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Upcoming and recent
-                </h3>
+            {liveFixtures.length > 0 && (
+                <div className="space-y-2 rounded-2xl border border-red-500/30 bg-red-500/5 p-3">
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                            </span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-red-700">
+                                Live Now ({liveFixtures.length})
+                            </span>
+                        </div>
+                        <span className="animate-pulse text-[10px] font-semibold uppercase tracking-wider text-red-600">
+                            Live Timers Active
+                        </span>
+                    </div>
+                    <div className="space-y-2.5">
+                        {liveFixtures.map((fixture) => (
+                            <LiveFixtureCard
+                                key={`live-featured-${fixture.id}`}
+                                fixture={fixture}
+                                onSelect={setSelectedFixture}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
 
+            <section
+                className="space-y-3"
+                onTouchStart={(event) => setTouchStartX(event.touches[0]?.clientX ?? null)}
+                onTouchEnd={(event) => {
+                    if (touchStartX === null) return;
+                    const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+                    const delta = endX - touchStartX;
+                    setTouchStartX(null);
+
+                    if (Math.abs(delta) < 48) return;
+                    setSelectedGameweekIndex((current) => {
+                        if (delta > 0) return Math.max(0, current - 1);
+                        return Math.min(fixtureGameweeks.length - 1, current + 1);
+                    });
+                }}
+            >
                 {coreLoading && sortedFixtures.length === 0 ? (
                     <ShellCard className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch className="h-4 w-4 animate-spin" />
                         Loading fixtures…
                     </ShellCard>
-                ) : upcomingFixtures.length === 0 && finishedFixtures.length === 0 ? (
+                ) : !selectedGameweek ? (
                     <ShellCard className="p-5 text-center text-sm text-muted-foreground">
                         No fixtures available right now.
                     </ShellCard>
                 ) : (
-                    <div className="space-y-4">
-                        {[...groupByDay(upcomingFixtures), ...groupByDay(finishedFixtures)].map(([day, dayFixtures]) => (
-                            <div key={day} className="space-y-2">
-                                <div className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                                    {sastDate(dayFixtures[0].kickoff)}
+                    <>
+                        <ShellCard className="p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(-1)}
+                                    disabled={gameweekIndex <= 0}
+                                    aria-label="Previous gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretLeft size={ICON.action} weight="bold" />
+                                </button>
+
+                                <div className="min-w-0 text-center">
+                                    <p className="truncate text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                        {selectedGameweek.label}
+                                    </p>
+                                    {selectedGameweek.dateRange && (
+                                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                            {selectedGameweek.dateRange}
+                                        </p>
+                                    )}
                                 </div>
-                                <div className="space-y-3">
-                                    {dayFixtures.map((fixture) => (
-                                        <LiveFixtureCard
-                                            key={fixture.id}
-                                            fixture={fixture}
-                                            onSelect={setSelectedFixture}
-                                        />
-                                    ))}
-                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => stepGameweek(1)}
+                                    disabled={gameweekIndex >= fixtureGameweeks.length - 1}
+                                    aria-label="Next gameweek"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-primary transition-colors hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-25"
+                                >
+                                    <CaretRight size={ICON.action} weight="bold" />
+                                </button>
                             </div>
-                        ))}
-                    </div>
+                        </ShellCard>
+
+                        <div className="space-y-4">
+                            {groupByDay(selectedGameweek.fixtures).map(([day, dayFixtures]) => (
+                                <div key={day} className="space-y-2">
+                                    <div className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                                        {sastDate(dayFixtures[0].kickoff)}
+                                    </div>
+                                    <div className="space-y-3">
+                                        {dayFixtures.map((fixture) => (
+                                            <LiveFixtureCard
+                                                key={fixture.id}
+                                                fixture={fixture}
+                                                onSelect={setSelectedFixture}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
                 )}
             </section>
         </div>
@@ -853,19 +1330,16 @@ export const FootballDashboard = () => {
 
     return (
         <div className={cn('min-h-screen pb-24', screenBg)}>
-            <TouchlineHeader
-                onAccount={() =>
-                    toast('Account area is not wired yet. Tell me what should live behind this button.')
-                }
-            />
+            <TouchlineHeader onAccount={openAuthModal} />
 
             <main className="mx-auto max-w-[28rem] px-4 py-4">
                 {currentScreen()}
             </main>
 
-            <BottomNav screen={screen} onChange={setScreen} />
+            <BottomNav screen={screen} onChange={changeScreen} liveCount={liveFixtures.length} />
             <MatchDetail fixture={selectedFixture} onClose={() => setSelectedFixture(null)} />
             <PlayerPoolDialog open={playerPoolOpen} onOpenChange={setPlayerPoolOpen} />
+            <AuthModal />
         </div>
     );
 };
