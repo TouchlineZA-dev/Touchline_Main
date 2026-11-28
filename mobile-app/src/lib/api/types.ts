@@ -144,7 +144,7 @@ export interface LeagueSummary {
 
 export interface StandingRow {
   rank: number;
-  fantasyTeamId: number;
+  fantasyTeamId: number | string;
   teamName: string;
   username: string;
   points: number;

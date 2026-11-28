@@ -26,14 +26,14 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.green,
     borderRadius: 8,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 22,
     borderWidth: 1,
     borderColor: '#5CCB7E',
     ...Shadow,
   },
   titlePillText: {
     fontFamily: Fonts.heading,
-    fontSize: 24,
+    fontSize: 34,
     color: '#FFFFFF',
   },
 });

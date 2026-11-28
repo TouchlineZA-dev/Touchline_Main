@@ -11,16 +11,24 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/src/lib/auth/AuthContext';
 import { supabase } from '@/src/lib/auth/supabaseClient';
+import { AppConfig } from '@/src/lib/config/env';
 import { Brand, Fonts } from '@/src/theme/design';
 
+WebBrowser.maybeCompleteAuthSession();
+
 type Mode = 'start' | 'login' | 'register';
-type OAuthProvider = 'google' | 'apple' | 'facebook';
+type OAuthProvider = 'google' | 'apple';
 
 const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
+const authConfigurationMessage =
+  'Sign-in needs the Supabase project URL and public anon/publishable key. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to mobile-app/.env, then restart Expo.';
 
 export default function StartScreen() {
   const insets = useSafeAreaInsets();
@@ -34,20 +42,63 @@ export default function StartScreen() {
 
   const oauth = async (provider: OAuthProvider) => {
     setMessage(null);
-    if (Platform.OS !== 'web') {
-      setMessage({ text: 'Social sign-in is available on web for now. Use email to log in.', error: true });
+    if (!supabase) {
+      setMessage({ text: authConfigurationMessage, error: true });
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) setMessage({ text: error.message, error: true });
+    if (Platform.OS !== 'web' && Constants.expoVersion) {
+      setMessage({
+        text: 'Google and Apple sign-in need the Touchline development build. Expo Go cannot return from social sign-in. Email login still works here.',
+        error: true,
+      });
+      return;
+    }
+    try {
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: new URL('/', window.location.href).toString() },
+        });
+        if (error) setMessage({ text: error.message, error: true });
+        return;
+      }
+
+      const redirectTo = Linking.createURL('auth/callback', { scheme: 'touchlinesa' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data.url) throw new Error('Supabase did not return a sign-in URL.');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success') return;
+
+      const callback = new URL(result.url);
+      const callbackError = callback.searchParams.get('error_description') || callback.searchParams.get('error');
+      if (callbackError) throw new Error(callbackError);
+
+      const code = callback.searchParams.get('code');
+      if (!code) throw new Error('Sign-in returned without an authorization code. Please try again.');
+
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw exchangeError;
+      close();
+    } catch (error) {
+      setMessage({
+        text: error instanceof Error ? error.message : 'Social sign-in could not be completed. Please try again.',
+        error: true,
+      });
+    }
   };
 
   const submit = async () => {
     if (mode === 'start') {
       setMode('login');
+      return;
+    }
+    if (!AppConfig.hasSupabaseConfiguration) {
+      setMessage({ text: authConfigurationMessage, error: true });
       return;
     }
     if (!email || !password) {
@@ -114,7 +165,6 @@ export default function StartScreen() {
                 <>
                   <PillButton label="Google Account" onPress={() => oauth('google')} />
                   <PillButton label="Apple Account" onPress={() => oauth('apple')} />
-                  <PillButton label="Facebook Account" onPress={() => oauth('facebook')} />
                 </>
               ) : (
                 <>
@@ -130,6 +180,10 @@ export default function StartScreen() {
                 <Text style={[styles.message, message.error ? styles.messageError : styles.messageOk]}>
                   {message.text}
                 </Text>
+              ) : null}
+
+              {!AppConfig.hasSupabaseConfiguration && !message ? (
+                <Text style={[styles.message, styles.messageError]}>{authConfigurationMessage}</Text>
               ) : null}
 
               <TouchableOpacity style={styles.loginButton} onPress={submit} disabled={loading}>
