@@ -10,7 +10,6 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { api, ApiError } from '@/src/lib/api/client';
@@ -18,7 +17,8 @@ import { useApi } from '@/src/lib/api/useApi';
 import { Position, Snapshot, SquadPlayer } from '@/src/lib/api/types';
 import { useAuth } from '@/src/lib/auth/AuthContext';
 import { ScreenState } from '@/src/components/ScreenState';
-import { Crest } from '@/src/components/Common';
+import { Jersey } from '@/src/components/Jersey';
+import { TouchlineHeader } from '@/src/components/TouchlineHeader';
 import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
 type Tab = 'squad' | 'market' | 'leagues';
@@ -81,18 +81,13 @@ export default function MySquadScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#2A8C46', '#4DBE6C', '#8FE3A1']}
-        locations={[0, 0.55, 1]}
-        style={[styles.gradient, { paddingTop: Math.max(insets.top, 12) }]}
-      />
+      <TouchlineHeader />
 
       {/* Top segmented tabs */}
-      <View style={[styles.topTabs, { marginTop: Math.max(insets.top, 12) }]}>
+      <View style={[styles.topTabs, { marginTop: 12 }]}>
         {([
-          ['squad', 'My Squad'],
+          ['squad', 'My Team'],
           ['market', 'Transfer Market'],
-          ['leagues', 'Leagues'],
         ] as const).map(([key, label]) => (
           <TouchableOpacity
             key={key}
@@ -214,10 +209,10 @@ function ManagerTabs({
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={refresh}>
-      <Text style={styles.welcomeTitle}>Welcome Back, {data.displayName}!</Text>
-      <Text style={styles.welcomeSubtitle}>Ready to build your dream PSL squad?</Text>
+      <Text style={styles.welcomeTitle}>My team</Text>
+      <Text style={styles.welcomeSubtitle}>{snapshot.team.name} · {next ? next.name : 'No upcoming gameweek'}</Text>
 
-      <View style={styles.managerCard}>
+      <View style={[styles.managerCard, styles.dashboardCard]}>
         <View style={styles.teamHeaderRow}>
           <Ionicons name="trophy-outline" size={22} color="#FFFFFF" />
           <Text style={styles.teamNameText} numberOfLines={1}>{snapshot.team.name}</Text>
@@ -342,8 +337,9 @@ function PickTeam({ players, onBack }: { players: SquadPlayer[]; onBack: () => v
   ];
 
   return (
-    <View style={[styles.pitchScreen, { paddingTop: Math.max(insets.top, 12) }]}>
-      <View style={styles.pitchToolbar}>
+    <View style={styles.pitchScreen}>
+      <TouchlineHeader />
+      <View style={[styles.pitchToolbar, { marginTop: Math.max(insets.top, 8) }]}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Ionicons name="chevron-back" size={22} color={Brand.ink} />
         </TouchableOpacity>
@@ -413,7 +409,7 @@ function PlayerSlot({ player }: { player?: SquadPlayer }) {
   return (
     <View style={styles.slotWrap}>
       <View style={styles.slot}>
-        {player ? <Crest name={player.club} size={26} /> : null}
+        {player ? <Jersey club={player.club} size={42} /> : <View style={styles.emptySlot}><Ionicons name="add" size={16} color="#E8F5EC" /></View>}
         {player?.isCaptain ? <Text style={styles.captainBadge}>C</Text> : null}
         {player?.isViceCaptain ? <Text style={styles.captainBadge}>V</Text> : null}
       </View>
@@ -473,9 +469,7 @@ function MarketTab() {
       ) : (
         players.map((p) => (
           <View key={p.id} style={styles.listCard}>
-            <View style={{ marginRight: 10 }}>
-              <Crest name={p.team} url={p.teamCrest} size={28} />
-            </View>
+            <Jersey club={p.team} size={38} />
             <View style={{ flex: 1 }}>
               <Text style={styles.listTitle} numberOfLines={1}>{p.name}</Text>
               <Text style={styles.listSubtitle} numberOfLines={1}>
@@ -493,30 +487,25 @@ function MarketTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Brand.screen,
-  },
-  gradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 420,
+    backgroundColor: '#FFFFFF',
   },
   topTabs: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#22773D',
-    marginHorizontal: 8,
-    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Brand.line,
     padding: 4,
     marginBottom: 8,
     ...Shadow,
   },
   topTabButton: {
-    paddingVertical: 4,
+    paddingVertical: 9,
     paddingHorizontal: 8,
-    borderRadius: 4,
+    borderRadius: 9,
   },
   topTabButtonActive: {
     backgroundColor: '#FFFFFF',
@@ -524,38 +513,45 @@ const styles = StyleSheet.create({
   topTabText: {
     fontFamily: Fonts.bodyMedium,
     fontSize: 12,
-    color: '#FFFFFF',
+    color: Brand.ink,
   },
   topTabTextActive: {
     color: Brand.greenText,
   },
   scrollContent: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 14,
+    paddingTop: 8,
     paddingBottom: 24,
   },
   welcomeTitle: {
     fontFamily: Fonts.heading,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 28,
+    lineHeight: 34,
     color: Brand.ink,
     paddingHorizontal: 6,
+    maxWidth: 340,
   },
   welcomeSubtitle: {
     fontFamily: Fonts.bodyMedium,
-    fontSize: 11,
+    fontSize: 14,
     color: Brand.ink,
     paddingHorizontal: 6,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   managerCard: {
     backgroundColor: Brand.greenDark,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#4FBF70',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    marginHorizontal: -6,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     marginBottom: 28,
     ...Shadow,
+  },
+  dashboardCard: {
+    minHeight: 388,
+    justifyContent: 'space-between',
   },
   teamHeaderRow: {
     flexDirection: 'row',
@@ -599,19 +595,19 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontFamily: Fonts.headingBold,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 42,
+    lineHeight: 48,
     color: '#FFFFFF',
   },
   statValueBig: {
     fontFamily: Fonts.headingBold,
-    fontSize: 44,
-    lineHeight: 50,
+    fontSize: 56,
+    lineHeight: 62,
     color: '#FFFFFF',
   },
   statLabel: {
     fontFamily: Fonts.bodyMedium,
-    fontSize: 10,
+    fontSize: 13,
     color: '#FFFFFF',
   },
   statWithArrow: {
@@ -622,7 +618,7 @@ const styles = StyleSheet.create({
   actionButton: {
     backgroundColor: Brand.greenDeep,
     borderRadius: 14,
-    paddingVertical: 4,
+    paddingVertical: 8,
     alignItems: 'center',
     alignSelf: 'center',
     width: '72%',
@@ -637,19 +633,19 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.mint,
     borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginHorizontal: 12,
+    paddingVertical: 26,
+    marginHorizontal: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     ...Shadow,
   },
   quickNavLeft: {
-    gap: 14,
+    gap: 18,
   },
   quickNavText: {
     fontFamily: Fonts.bodyMedium,
-    fontSize: 13,
+    fontSize: 16,
     color: '#1E3A28',
   },
   input: {
@@ -746,7 +742,7 @@ const styles = StyleSheet.create({
   // Pick team
   pitchScreen: {
     flex: 1,
-    backgroundColor: Brand.screen,
+    backgroundColor: '#FFFFFF',
   },
   pitchToolbar: {
     flexDirection: 'row',
@@ -860,10 +856,19 @@ const styles = StyleSheet.create({
     width: 56,
   },
   slot: {
-    width: 36,
-    height: 42,
-    backgroundColor: Brand.slot,
-    borderRadius: 2,
+    width: 44,
+    height: 44,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptySlot: {
+    width: 25,
+    height: 30,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },

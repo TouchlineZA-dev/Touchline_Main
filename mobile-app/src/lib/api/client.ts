@@ -33,6 +33,7 @@ interface RequestOptions extends RequestInit {
 
 class ApiClient {
   private async getAuthToken(): Promise<string | null> {
+    if (!supabase) return null;
     try {
       const { data } = await supabase.auth.getSession();
       return data?.session?.access_token ?? null;
@@ -156,20 +157,46 @@ class ApiClient {
   }
 
   getMyLeagues() {
-    return this.request<LeagueSummary[]>('/fantasy/leagues', { auth: true });
+    return this.request<{ leagues: Array<Partial<LeagueSummary> & Pick<LeagueSummary, 'id' | 'name'>> }>('/fantasy/leagues', { auth: true })
+      .then(({ leagues }) => leagues.map((league) => ({
+        id: league.id,
+        name: league.name,
+        isOverall: league.isOverall ?? false,
+        isOwner: league.isOwner ?? false,
+        joinCode: league.joinCode ?? null,
+        members: league.members ?? 0,
+        myRank: league.myRank ?? null,
+        provisional: league.provisional ?? false,
+      })));
   }
 
   createLeague(name: string) {
-    return this.request<LeagueSummary>('/fantasy/leagues', { auth: true, method: 'POST', body: JSON.stringify({ name }) });
+    return this.request<{ league: LeagueSummary }>('/fantasy/leagues', { auth: true, method: 'POST', body: JSON.stringify({ name }) })
+      .then((result) => result.league);
   }
 
   joinLeague(code: string) {
-    return this.request<LeagueSummary>('/fantasy/leagues/join', { auth: true, method: 'POST', body: JSON.stringify({ code }) });
+    return this.request<{ membership: unknown }>('/fantasy/leagues/join', { auth: true, method: 'POST', body: JSON.stringify({ code }) });
   }
 
   getLeagueStandings(leagueId: string, gameweek?: number) {
     const query = gameweek ? `?gameweek=${gameweek}` : '';
-    return this.request<LeagueStandings>(`/fantasy/leagues/${encodeURIComponent(leagueId)}/standings${query}`, { auth: true });
+    return this.request<{ gameweek: number | null; standings: Array<Partial<LeagueStandings['rows'][number]> & { teamId?: string | number; teamName: string; rank: number; totalPoints: number; gameweekPoints: number }> }>(`/fantasy/leagues/${encodeURIComponent(leagueId)}/standings${query}`, { auth: true })
+      .then(({ gameweek: week, standings }) => ({
+        leagueId,
+        name: '',
+        gameweek: week,
+        provisional: false,
+        rows: standings.map((row) => ({
+          rank: row.rank,
+          fantasyTeamId: row.fantasyTeamId ?? row.teamId ?? 0,
+          teamName: row.teamName,
+          username: row.username ?? '',
+          points: gameweek ? row.gameweekPoints : row.totalPoints,
+          overallPoints: row.totalPoints,
+          provisional: row.provisional ?? false,
+        })),
+      }));
   }
 }
 

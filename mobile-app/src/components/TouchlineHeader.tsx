@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Alert, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Brand, Fonts, Shadow } from '../theme/design';
+import { Fonts } from '../theme/design';
 
 interface HeaderProps {
   onProfilePress?: () => void;
@@ -13,58 +13,59 @@ export const TouchlineHeader: React.FC<HeaderProps> = ({ onProfilePress }) => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       <View style={styles.left}>
-        <View style={styles.logoBadge}>
-          <MaterialCommunityIcons name="soccer" size={24} color="#1E5E33" />
-        </View>
+        <Image source={require('@/assets/images/touchline-logo.png')} style={styles.logoBadge} resizeMode="cover" />
         <Text style={styles.title}>TOUCHLINE SA</Text>
       </View>
-
-      <TouchableOpacity style={styles.profileButton} onPress={onProfilePress ?? (() => router.push('/modal'))}>
-        <Ionicons name="person-outline" size={22} color="#1E5E33" />
-      </TouchableOpacity>
+      <View style={styles.actions}>
+        <TouchableOpacity accessibilityLabel="Notifications" style={styles.iconButton} onPress={() => Alert.alert('Notifications', 'Notifications are not connected yet.')}>
+          <Ionicons name="notifications-outline" size={20} color="#111827" />
+        </TouchableOpacity>
+        <TouchableOpacity accessibilityLabel="Account" style={styles.iconButton} onPress={onProfilePress ?? (() => router.push('/modal'))}>
+          <Ionicons name="person-circle-outline" size={23} color="#111827" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Brand.green,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    ...Shadow,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E1E8E3',
   },
   left: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   logoBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Brand.greenLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   title: {
     fontFamily: Fonts.display,
-    fontSize: 30,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-    marginTop: 4,
+    fontSize: 17,
+    color: '#111827',
+    letterSpacing: 0.2,
   },
-  profileButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Brand.greenLight,
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconButton: {
+    width: 30,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },

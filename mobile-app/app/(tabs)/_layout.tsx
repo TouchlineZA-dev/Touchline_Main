@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Brand, Fonts } from '@/src/theme/design';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { Fonts } from '@/src/theme/design';
 
 export default function TabLayout() {
   return (
@@ -9,26 +9,26 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Brand.green,
-          height: 64,
-          paddingBottom: 6,
-          paddingTop: 6,
-          borderTopWidth: 0,
+          backgroundColor: '#FFFFFF',
+          height: 76,
+          paddingBottom: 8,
+          paddingTop: 8,
+          borderTopWidth: 1,
+          borderTopColor: '#D7E3DB',
         },
-        tabBarActiveTintColor: '#FFFFFF',
-        tabBarInactiveTintColor: '#FFFFFF',
+        tabBarActiveTintColor: '#087C3A',
+        tabBarInactiveTintColor: '#202522',
         tabBarLabelStyle: {
-          fontFamily: Fonts.display,
-          fontSize: 11,
-          letterSpacing: 0.3,
-          marginTop: 2,
+          fontFamily: Fonts.bodyMedium,
+          fontSize: 10,
+          marginTop: 1,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'NEWS',
+          title: 'Home',
           tabBarIcon: ({ color }) => (
             <Ionicons name="newspaper-outline" size={24} color={String(color)} />
           ),
@@ -37,7 +37,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="squad"
         options={{
-          title: 'MY SQUAD',
+          title: 'Squad',
           tabBarIcon: ({ color }) => (
             <Ionicons name="people-outline" size={24} color={String(color)} />
           ),
@@ -46,7 +46,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="leagues"
         options={{
-          title: 'LEAGUES',
+          title: 'Leagues',
           tabBarIcon: ({ color }) => (
             <Ionicons name="trophy-outline" size={24} color={String(color)} />
           ),
@@ -55,18 +55,18 @@ export default function TabLayout() {
       <Tabs.Screen
         name="table"
         options={{
-          title: 'PSL TABLE',
+          title: 'Stats',
           tabBarIcon: ({ color }) => (
-            <Feather name="layout" size={24} color={String(color)} />
+            <Feather name="bar-chart-2" size={24} color={String(color)} />
           ),
         }}
       />
       <Tabs.Screen
         name="live"
         options={{
-          title: 'LIVE GAMES',
+          title: 'Matches',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="soccer" size={26} color={String(color)} />
+            <Ionicons name="calendar-outline" size={24} color={String(color)} />
           ),
         }}
       />

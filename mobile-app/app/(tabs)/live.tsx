@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TouchlineHeader } from '@/src/components/TouchlineHeader';
 import { api } from '@/src/lib/api/client';
 import { useApi } from '@/src/lib/api/useApi';
 import { ApiFixture } from '@/src/lib/api/types';
 import { ScreenState } from '@/src/components/ScreenState';
-import { Crest, TitlePill } from '@/src/components/Common';
+import { Crest } from '@/src/components/Common';
 import { buildTeamLookup, dayKey, formatDayHeader, formatKickoffTime, TeamLookup } from '@/src/lib/football';
 import { Brand, Fonts, Shadow } from '@/src/theme/design';
 
@@ -61,18 +61,18 @@ async function loadFixtures() {
 const crestUrl = (teams: TeamLookup, id: number | null) => (id != null ? teams.get(id)?.crestUrl ?? null : null);
 
 export default function LiveGamesScreen() {
-  const insets = useSafeAreaInsets();
   const { data, error, loading, reload } = useApi(loadFixtures, []);
   const groups = data?.groups ?? [];
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) + 24 }]}>
+    <View style={styles.container}>
+      <TouchlineHeader />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={reload} />}
       >
-        <TitlePill title="Live Games" style={{ marginBottom: 22 }} />
+        <Text style={styles.pageTitle}>Matches</Text>
 
         {loading && !data ? (
           <ScreenState type="loading" light message="Loading fixtures..." />
@@ -127,11 +127,18 @@ export default function LiveGamesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Brand.screen,
+    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
+    paddingTop: 20,
     paddingBottom: 24,
+  },
+  pageTitle: {
+    fontFamily: Fonts.headingBold,
+    fontSize: 32,
+    color: Brand.ink,
+    marginBottom: 16,
   },
   dayGroup: {
     marginBottom: 4,
@@ -140,22 +147,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: Brand.green,
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 4,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     alignSelf: 'flex-start',
     marginBottom: 8,
   },
   datePillText: {
     fontFamily: Fonts.bodyMedium,
     color: Brand.greenText,
-    fontSize: 12,
+    fontSize: 14,
   },
   matchCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
@@ -179,11 +186,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   crestCol: {
-    width: 44,
+    width: 48,
     alignItems: 'center',
   },
   centerCol: {
-    width: 44,
+    width: 48,
     alignItems: 'center',
   },
   vsText: {
